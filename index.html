@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mahfuz Ahmed – Student & Future Software Engineer</title>
+<meta name="description" content="Portfolio of Mahfuz Ahmed: student passionate about technology, programming and innovation.">
+<meta name="theme-color" content="#121110">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<!-- 3D "Let's Connect" goo button: Venom Button by exteestudio (MIT), see collab/LICENSE -->
+
+<div id="loader" aria-hidden="true"><span>● REC <b id="timecode">00:00:00:00</b></span></div>
+<div id="progress" aria-hidden="true"></div>
+
+<header id="nav">
+  <a class="brand" href="#top" data-c="name"></a>
+  <nav>
+    <a href="#work">Projects</a>
+    <a href="#process">Process</a>
+    <a href="#about">About</a>
+    <a class="btn-cream" href="#contact">Let’s talk</a>
+  </nav>
+</header>
+
+<main id="top">
+  <noscript><p style="padding:120px 24px">Please turn on JavaScript to see this portfolio.</p></noscript>
+
+  <!-- HERO -->
+  <section id="hero">
+    <div class="wrap hero-grid">
+      <div class="hero-copy">
+        <span class="badge"><i></i>Open to new opportunities</span>
+        <h1 data-c="name"></h1>
+        <p class="tagline" data-c="tagline"></p>
+        <div class="cta-row">
+          <a class="btn-cream" href="#work">See my projects</a>
+          <a class="btn-ghost" href="#contact">Get in touch</a>
+        </div>
+        <ul class="tools" id="tools" aria-label="Tools"></ul>
+      </div>
+
+      <!-- ID card (lanyard hangs from the top edge) -->
+      <div id="lanyard" aria-label="Hanging ID card. Drag it.">
+        <svg id="strap" aria-hidden="true">
+          <defs><path id="strap-path" d="M0 0"/></defs>
+          <path id="strap-line" fill="none" stroke-linecap="round"/>
+          <text id="strap-text"><textPath href="#strap-path" id="strap-tp" startOffset="0"></textPath></text>
+        </svg>
+        <div id="card">
+          <div class="clip" aria-hidden="true"><span></span></div>
+          <div class="card-top"><span>CREW PASS</span><span class="rec">● REC</span></div>
+          <div class="photo"><img id="card-photo" src="assets/me-front.webp" alt="Portrait of Mahfuz Ahmed" width="400" height="400" draggable="false"><i class="c tl"></i><i class="c tr"></i><i class="c bl"></i><i class="c br"></i></div>
+          <div class="card-role" data-c="role"></div>
+          <div class="card-name" data-c="name"></div>
+          <div class="card-meta"><span id="card-id"></span><span class="barcode" aria-hidden="true"></span></div>
+        </div>
+        <div class="grab">GRAB THE CARD ↑</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SKILLS STRIP -->
+  <div class="strip" aria-label="Skills"><div class="strip-track" id="strip"></div></div>
+
+  <!-- 01 PROJECTS -->
+  <section id="work" class="sec">
+    <div class="wrap">
+      <p class="label">01 — Selected projects</p>
+      <h2>Things I’m building.</h2>
+      <div class="rail-head">
+        <p class="muted" data-c="projectsNote"></p>
+        <div class="arrows"><button id="prev" aria-label="Previous">←</button><button id="next" aria-label="Next">→</button></div>
+      </div>
+      <div class="rail" id="rail"></div>
+    </div>
+  </section>
+
+  <!-- 02 PROCESS -->
+  <section id="process" class="sec">
+    <div class="wrap">
+      <p class="label">02 — Process</p>
+      <h2>How an idea becomes a project.</h2>
+      <div class="timeline" id="timeline" aria-hidden="true">
+        <div class="tl-ruler"></div>
+        <div class="tl-track"><b>UI</b><span style="--l:4%;--w:30%"></span><span style="--l:40%;--w:22%"></span><span style="--l:68%;--w:26%"></span></div>
+        <div class="tl-track"><b>CODE</b><span style="--l:0%;--w:18%"></span><span style="--l:22%;--w:36%"></span><span style="--l:64%;--w:30%"></span></div>
+        <div class="tl-track"><b>AI</b><span style="--l:10%;--w:26%"></span><span style="--l:46%;--w:20%"></span><span style="--l:72%;--w:22%"></span></div>
+        <div class="tl-track"><b>TEST</b><span style="--l:30%;--w:24%"></span><span style="--l:58%;--w:36%"></span></div>
+        <div class="playhead"></div>
+      </div>
+      <ol class="steps" id="steps"></ol>
+    </div>
+  </section>
+
+  <!-- 03 ABOUT -->
+  <section id="about" class="sec">
+    <div class="wrap about-grid">
+      <div class="reveal-wrap">
+        <div id="reveal" aria-label="Photo. Move the cursor over it to reveal the hero version.">
+          <img class="r-base" src="assets/me-side.webp" alt="Portrait of Mahfuz Ahmed" width="800" height="1200" loading="lazy" draggable="false">
+          <img class="r-mask" src="assets/me-mask.webp" alt="" width="800" height="1200" loading="lazy" draggable="false">
+          <i class="r-ring" aria-hidden="true"></i>
+        </div>
+        <p class="grab">HOVER THE PHOTO</p>
+      </div>
+      <div class="about-copy">
+        <p class="label">03 — About</p>
+        <h2 data-c="aboutTitle"></h2>
+        <p class="body" data-c="about"></p>
+        <ul class="pills" id="strengths"></ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 04 CONTACT -->
+  <section id="contact" class="sec">
+    <div class="wrap">
+      <div class="contact-card">
+        <p class="label dark">04 — Contact</p>
+        <h2 data-c="contactTitle"></h2>
+        <div class="rows">
+          <div class="row"><span>Email</span><a id="email-link" href="#"></a><button id="copy" type="button">Copy</button></div>
+          <div class="row"><span>WhatsApp</span><a id="wa-link" href="#" target="_blank" rel="noopener noreferrer"></a></div>
+        </div>
+        <ul class="socials" id="socials"></ul>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="wrap foot"><span id="foot"></span><span>Goo button by exteestudio (MIT)</span></footer>
+
+<!-- Floating goo button: real link + CSS fallback pill (3D iframe is added by script.js) -->
+<div id="goo">
+  <a id="goo-link" class="pill" href="#"><span id="goo-label"></span></a>
+</div>
+
+<!-- Cursor follower -->
+<div id="cur" aria-hidden="true"><i class="halo"></i><i class="ring"></i><i class="dot"></i></div>
+
+<script src="script.js" defer></script>
+</body>
+</html>
