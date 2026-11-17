@@ -208,3 +208,7 @@ h2{font-size:clamp(38px,6vw,84px);margin-bottom:36px;max-width:14ch}
   *,*::before,*::after{animation:none!important;transition:none!important}
   #cur{display:none}.timeline{transform:none}
 }
+
+/* motion permission button (iPhone) */
+.motion-btn{position:absolute;left:50%;bottom:64px;transform:translateX(-50%);pointer-events:auto;padding:9px 16px;border:1px solid rgba(var(--accent-rgb)/.6);border-radius:999px;background:rgba(18,17,16,.82);color:var(--text);font:500 11px var(--mono);letter-spacing:.08em;white-space:nowrap}
+.motion-btn:disabled{opacity:.6;cursor:default}

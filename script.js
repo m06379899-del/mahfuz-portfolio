@@ -119,6 +119,16 @@ const lan = $('#lanyard'), card = $('#card'), strapLine = $('#strap-line'), stra
 $('#strap-tp').textContent = C.strap.repeat(8);
 const N = 12, G = .55, DAMP = .982, MAXV = 16;
 let pts = [], seg = 20, ax = 0, ay = 0, cw = 250, ch = 360, pinned = false, running = false, drag = null, rest = 0;
+/* tilt state: springs for the 3D tilt (rx, ry) and a gravity angle (ga) that swings the lanyard */
+const T = { rx: 0, ry: 0, vx: 0, vy: 0, tx: 0, ty: 0, ga: 0, gt: 0 };
+let heroVisible = true;
+function tiltStep() {
+  const K = .08, D = .17;                       /* spring stiffness and damping */
+  T.vx += (T.tx - T.rx) * K - T.vx * D; T.rx += T.vx;
+  T.vy += (T.ty - T.ry) * K - T.vy * D; T.ry += T.vy;
+  T.ga += (T.gt - T.ga) * .12;
+}
+const tiltCalm = () => Math.abs(T.tx - T.rx) + Math.abs(T.ty - T.ry) + Math.abs(T.vx) + Math.abs(T.vy) + Math.abs(T.gt - T.ga) * 40 < .02;
 
 function layout(drop) {
   const lr = lan.getBoundingClientRect(), gr = $('.hero-grid').getBoundingClientRect(), wide = innerWidth > 900;
@@ -134,7 +144,7 @@ function step() {
   const n = pts.length;
   for (let i = pinned ? 1 : 0; i < n; i++) {
     if (drag && i === n - 1) continue;
-    const p = pts[i]; let vx = (p.x - p.px) * DAMP, vy = (p.y - p.py) * DAMP + G; const s = Math.hypot(vx, vy);
+    const p = pts[i]; let vx = (p.x - p.px) * DAMP + G * Math.sin(T.ga), vy = (p.y - p.py) * DAMP + G * Math.cos(T.ga); const s = Math.hypot(vx, vy);
     if (s > MAXV) { vx *= MAXV / s; vy *= MAXV / s; }
     p.px = p.x; p.py = p.y; p.x += vx; p.y += vy;
   }
@@ -156,18 +166,20 @@ function step() {
 function render() {
   const n = pts.length, l = pts[n - 1], pr = pts[n - 2];
   const ang = Math.atan2(-(l.x - pr.x), l.y - pr.y) * 180 / Math.PI;
-  card.style.transform = `translate3d(${l.x - cw / 2}px,${l.y}px,0) rotate(${ang}deg)`;
+  card.style.transform = `translate3d(${l.x - cw / 2}px,${l.y}px,0) rotate(${ang}deg) perspective(900px) rotateX(${T.rx.toFixed(2)}deg) rotateY(${T.ry.toFixed(2)}deg)`;
   let d = `M${pts[0].x} ${pts[0].y}`;
   for (let i = 1; i < n - 1; i++) d += `Q${pts[i].x} ${pts[i].y} ${(pts[i].x + pts[i + 1].x) / 2} ${(pts[i].y + pts[i + 1].y) / 2}`;
   d += `L${l.x} ${l.y}`; strapLine.setAttribute('d', d); strapPath.setAttribute('d', d);
 }
 function loop() {
-  if (!running) return; step(); render();
+  if (!running) return;
+  if (!heroVisible && !drag) { running = false; return; }   /* save battery when the card is off screen */
+  tiltStep(); step(); render();
   let m = 0; for (const p of pts) m += Math.abs(p.x - p.px) + Math.abs(p.y - p.py);
-  if (!drag && pinned && m < .06) { if (++rest > 40) { running = false; return; } } else rest = 0;
+  if (!drag && pinned && m < .06 && tiltCalm()) { if (++rest > 40) { running = false; return; } } else rest = 0;
   requestAnimationFrame(loop);
 }
-const wake = () => { if (!running) { running = true; rest = 0; requestAnimationFrame(loop); } };
+const wake = () => { if (!running && (heroVisible || drag)) { running = true; rest = 0; requestAnimationFrame(loop); } };
 const lp = e => { const r = lan.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
 card.addEventListener('pointerdown', e => {
   if (reduce) return; e.preventDefault(); card.setPointerCapture(e.pointerId);
@@ -183,6 +195,48 @@ const release = () => {
   l.px = l.x - vx; l.py = l.y - vy; drag = null; wake();
 };
 card.addEventListener('pointerup', release); card.addEventListener('pointercancel', release);
+/* ---------- gyroscope (phones) + mouse (desktop) tilt, on top of the rope physics ---------- */
+(function () {
+  if (reduce) return;
+  const DOE = window.DeviceOrientationEvent, needsPerm = !!(DOE && typeof DOE.requestPermission === 'function');
+  let bb = null, bg = null, listening = false, enabled = false, pending = false, btn = null;
+  const onOrient = e => {
+    if (e.beta == null || e.gamma == null) return;
+    if (bb == null) { bb = e.beta; bg = e.gamma; }
+    bb += (e.beta - bb) * .012; bg += (e.gamma - bg) * .012;     /* slow baseline: the card eases back to rest when the phone is still */
+    const db = clamp(e.beta - bb, -40, 40), dg = clamp(e.gamma - bg, -40, 40);
+    T.tx = -db * .6;                       /* forward / backward tilt */
+    T.ty = dg * .5;                        /* left / right tilt, 3D turn */
+    T.gt = dg * Math.PI / 180 * .9;        /* the lanyard swings the way the phone leans */
+    wake();
+  };
+  const attach = () => { if (!listening) { listening = true; addEventListener('deviceorientation', onOrient, { passive: true }); } };
+  const detach = () => { if (listening) { listening = false; removeEventListener('deviceorientation', onOrient); bb = bg = null; T.tx = T.ty = T.gt = 0; wake(); } };
+  const sync = () => { (enabled && heroVisible && !document.hidden) ? attach() : detach(); };
+  async function enable() {
+    if (enabled || pending) return; pending = true;
+    try {
+      if (needsPerm) { const r = await DOE.requestPermission(); if (r !== 'granted') { if (btn) { btn.textContent = 'Motion blocked'; btn.disabled = true; } return; } }
+      enabled = true; if (btn) btn.remove(); sync();
+    } catch (e) { if (btn) { btn.textContent = 'Motion unavailable'; btn.disabled = true; } }
+    finally { pending = false; }
+  }
+  if (touch && DOE) {
+    if (needsPerm) {                       /* iOS asks for permission, and only after a tap */
+      btn = h('button', 'motion-btn', 'Tap to enable motion'); btn.type = 'button'; btn.onclick = enable; lan.append(btn);
+      card.addEventListener('pointerdown', () => { if (!enabled) enable(); });
+    } else { enabled = true; sync(); }     /* Android and others: no prompt needed */
+  }
+  if ('IntersectionObserver' in window) new IntersectionObserver(([en]) => { heroVisible = en.isIntersecting; sync(); wake(); }).observe($('#hero'));
+  document.addEventListener('visibilitychange', sync);
+  if (!touch) {                            /* desktop fallback: the card turns toward the mouse */
+    addEventListener('pointermove', e => {
+      if (e.pointerType === 'touch' || !heroVisible) return;
+      T.ty = (e.clientX / innerWidth - .5) * 28; T.tx = -(e.clientY / innerHeight - .5) * 20; wake();
+    }, { passive: true });
+    document.documentElement.addEventListener('pointerleave', () => { T.tx = T.ty = 0; wake(); });
+  }
+})();
 layout(!reduce);
 let lastW = innerWidth, rt; addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { if (innerWidth !== lastW) { lastW = innerWidth; layout(false); } }, 200); });
 
