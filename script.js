@@ -40,8 +40,48 @@ const CONTENT = {
   ],
   goo: "Let’s Connect",
   goo3d: false,  /* false = light glossy button (safe). true = heavy 3D goo button, needs a good graphics card */
-  env: true      /* true = 3D particle environment behind the site. false = switch it off */
+  env: true,     /* true = 3D particle environment behind the site. false = switch it off */
+  tilt: { card: 1, env: 1 }   /* phone-tilt strength, set separately: 1 = normal, 0 = off, 1.5 = stronger (max 2) */
 };
+
+/* =====================================================================
+   ONE shared device-orientation system.
+   The ID card and the 3D environment both subscribe to it, so the browser has a
+   single deviceorientation listener and there is a single permission flow.
+   Each subscriber keeps its own baseline, mapping and strength (CONTENT.tilt).
+   ===================================================================== */
+const Orient = (() => {
+  const DOE = window.DeviceOrientationEvent;
+  const needsPermission = !!(DOE && typeof DOE.requestPermission === 'function');   /* iPhone / iPad */
+  const subs = new Set(), watchers = new Set();
+  let state = !DOE ? 'unsupported' : needsPermission ? 'prompt' : 'granted', listening = false, pending = null;
+  const notify = () => watchers.forEach(fn => fn(state));
+  const onEvt = e => {
+    if (e.beta == null || e.gamma == null) return;
+    if (state === 'prompt') { state = 'granted'; notify(); }      /* events are flowing, so motion was already allowed */
+    subs.forEach(fn => fn(e.beta, e.gamma));
+  };
+  const sync = () => {                                            /* listener only while someone needs it and the tab is visible */
+    const want = (state === 'granted' || state === 'prompt') && subs.size > 0 && !document.hidden;
+    if (want && !listening) { listening = true; addEventListener('deviceorientation', onEvt, { passive: true }); }
+    else if (!want && listening) { listening = false; removeEventListener('deviceorientation', onEvt); }
+  };
+  document.addEventListener('visibilitychange', sync);
+  function request() {                                            /* never called automatically: only from a tap */
+    if (state !== 'prompt') return Promise.resolve(state);
+    if (pending) return pending;
+    let p; try { p = Promise.resolve(DOE.requestPermission()); } catch (e) { p = Promise.reject(e); }
+    pending = p.then(r => { state = r === 'granted' ? 'granted' : 'denied'; }, () => { state = 'denied'; })
+      .then(() => { pending = null; sync(); notify(); return state; });
+    return pending;
+  }
+  return {
+    supported: !!DOE, needsPermission, get state() { return state; }, request,
+    watch: fn => { watchers.add(fn); },
+    subscribe(fn) { subs.add(fn); sync(); return () => { subs.delete(fn); sync(); }; },
+    info: () => ({ state, subscribers: subs.size, listening })
+  };
+})();
 
 (() => {
 'use strict';
@@ -200,34 +240,30 @@ card.addEventListener('pointerup', release); card.addEventListener('pointercance
 /* ---------- gyroscope (phones) + mouse (desktop) tilt, on top of the rope physics ---------- */
 (function () {
   if (reduce) return;
-  const DOE = window.DeviceOrientationEvent, needsPerm = !!(DOE && typeof DOE.requestPermission === 'function');
-  let bb = null, bg = null, listening = false, enabled = false, pending = false, btn = null;
-  const onOrient = e => {
-    if (e.beta == null || e.gamma == null) return;
-    if (bb == null) { bb = e.beta; bg = e.gamma; }
-    bb += (e.beta - bb) * .012; bg += (e.gamma - bg) * .012;     /* slow baseline: the card eases back to rest when the phone is still */
-    const db = clamp(e.beta - bb, -40, 40), dg = clamp(e.gamma - bg, -40, 40);
-    T.tx = -db * .6;                       /* forward / backward tilt */
-    T.ty = dg * .5;                        /* left / right tilt, 3D turn */
-    T.gt = dg * Math.PI / 180 * .9;        /* the lanyard swings the way the phone leans */
+  let bb = null, bg = null, unsub = null, btn = null;
+  const strength = () => clamp(C.tilt && C.tilt.card != null ? C.tilt.card : 1, 0, 2);
+  const onOrient = (beta, gamma) => {                              /* data comes from the shared Orient system */
+    if (bb == null) { bb = beta; bg = gamma; }
+    bb += (beta - bb) * .012; bg += (gamma - bg) * .012;           /* slow baseline: the card eases back to rest when the phone is still */
+    const k = strength(), db = clamp(beta - bb, -40, 40), dg = clamp(gamma - bg, -40, 40);
+    T.tx = -db * .6 * k;                   /* forward / backward tilt */
+    T.ty = dg * .5 * k;                    /* left / right tilt, 3D turn */
+    T.gt = dg * Math.PI / 180 * .9 * k;    /* the lanyard swings the way the phone leans */
     wake();
   };
-  const attach = () => { if (!listening) { listening = true; addEventListener('deviceorientation', onOrient, { passive: true }); } };
-  const detach = () => { if (listening) { listening = false; removeEventListener('deviceorientation', onOrient); bb = bg = null; T.tx = T.ty = T.gt = 0; wake(); } };
-  const sync = () => { (enabled && heroVisible && !document.hidden) ? attach() : detach(); };
-  async function enable() {
-    if (enabled || pending) return; pending = true;
-    try {
-      if (needsPerm) { const r = await DOE.requestPermission(); if (r !== 'granted') { if (btn) { btn.textContent = 'Motion blocked'; btn.disabled = true; } return; } }
-      enabled = true; if (btn) btn.remove(); sync();
-    } catch (e) { if (btn) { btn.textContent = 'Motion unavailable'; btn.disabled = true; } }
-    finally { pending = false; }
-  }
-  if (touch && DOE) {
-    if (needsPerm) {                       /* iOS asks for permission, and only after a tap */
-      btn = h('button', 'motion-btn', 'Tap to enable motion'); btn.type = 'button'; btn.onclick = enable; lan.append(btn);
-      card.addEventListener('pointerdown', () => { if (!enabled) enable(); });
-    } else { enabled = true; sync(); }     /* Android and others: no prompt needed */
+  const attach = () => { if (!unsub) unsub = Orient.subscribe(onOrient); };
+  const detach = () => { if (unsub) { unsub(); unsub = null; bb = bg = null; T.tx = T.ty = T.gt = 0; wake(); } };
+  const sync = () => { (touch && heroVisible && !document.hidden) ? attach() : detach(); };
+  const ui = () => {                       /* the button exists on iPhone only and disappears once motion is allowed */
+    if (!btn) return;
+    if (Orient.state === 'granted') { btn.remove(); btn = null; }
+    else if (Orient.state === 'denied') { btn.textContent = 'Motion blocked'; btn.disabled = true; }
+  };
+  const ask = () => { Orient.request().then(ui); };
+  if (touch && Orient.supported && Orient.needsPermission) {       /* iOS asks for permission, and only after a tap */
+    btn = h('button', 'motion-btn', 'Tap to enable motion'); btn.type = 'button'; btn.onclick = ask; lan.append(btn);
+    card.addEventListener('pointerdown', () => { if (Orient.state === 'prompt') ask(); });
+    Orient.watch(ui);
   }
   if ('IntersectionObserver' in window) new IntersectionObserver(([en]) => { heroVisible = en.isIntersecting; sync(); wake(); }).observe($('#hero'));
   document.addEventListener('visibilitychange', sync);
@@ -238,6 +274,7 @@ card.addEventListener('pointerup', release); card.addEventListener('pointercance
     }, { passive: true });
     document.documentElement.addEventListener('pointerleave', () => { T.tx = T.ty = 0; wake(); });
   }
+  sync();
 })();
 layout(!reduce);
 let lastW = innerWidth, rt; addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { if (innerWidth !== lastW) { lastW = innerWidth; layout(false); } }, 200); });
@@ -397,18 +434,21 @@ const pickScene = () => {
 
 /* --- state --- */
 let W = 0, H = 0, dpr = 1, q = (saveData || reduce) ? 0 : 3, N = 0, MAXN = 0, D = 130;
-let PX, PY, PZ, VX, VY, PH, SX, SY;
+let PX, PY, PZ, VX, VY, PH, PF, SX, SY;
 const MAXP = 260, PI_ = new Int16Array(MAXP), PJ_ = new Int16Array(MAXP), PA_ = new Float32Array(MAXP);
-let mx = 0, my = 0, gx = 0, gy = 0, camX = 0, camY = 0, scrollS = scrollY, scrollDirty = true;
+let mx = 0, my = 0, gx = 0, gy = 0, gz = 0, camX = 0, camY = 0, scrollS = scrollY, scrollDirty = true;
+const GS = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 };   /* spring for the phone tilt: smooth start, soft settle */
+let CX = 0, CY = 0, CZ = 0;                                /* final camera: mouse + auto drift + phone tilt */
+const dbg = {}; env.cam = dbg;                             /* read-only snapshot, handy for testing */
 let raf = 0, running = false, last = 0, slow = 0, qtimer = 0, resizeT = 0;
 let minDt = (touch || lowEnd || (navigator.hardwareConcurrency || 4) < 8) ? 33 : 16;   /* frame gap in ms: 16 = 60 fps, 33 = 30 fps */
 
 function build(n) {
   N = n; PX = new Float32Array(n); PY = new Float32Array(n); PZ = new Float32Array(n); VX = new Float32Array(n);
-  VY = new Float32Array(n); PH = new Float32Array(n); SX = new Float32Array(n); SY = new Float32Array(n);
+  VY = new Float32Array(n); PH = new Float32Array(n); PF = new Float32Array(n); SX = new Float32Array(n); SY = new Float32Array(n);
   for (let i = 0; i < n; i++) {
     const z = .18 + Math.pow(Math.random(), 1.5) * .82;            /* depth: .18 far ... 1 near */
-    PX[i] = Math.random() * W; PY[i] = Math.random() * H; PZ[i] = z; PH[i] = Math.random() * 6.28;
+    PX[i] = Math.random() * W; PY[i] = Math.random() * H; PZ[i] = z; PH[i] = Math.random() * 6.28; PF[i] = .6 + Math.random() * .9;   /* own ambient speed per point */
     VX[i] = (Math.random() - .5) * 12 * (.4 + z); VY[i] = -(2 + Math.random() * 7) * (.4 + z);   /* px per second */
   }
 }
@@ -432,7 +472,13 @@ function update(dt, now) {
   const m = 40, WW = W + 2 * m, HH = H + 2 * m;
   const autoX = Math.sin(now * .00013) * (touch ? .35 : .12), autoY = Math.cos(now * .00011) * (touch ? .3 : .1);
   const k = Math.min(1, dt / 16) * .05;
-  camX += (clamp(mx + gx + autoX, -.8, .8) - camX) * k; camY += (clamp(my + gy + autoY, -.8, .8) - camY) * k;
+  camX += (clamp(mx + autoX, -.8, .8) - camX) * k; camY += (clamp(my + autoY, -.8, .8) - camY) * k;   /* mouse + drift, unchanged */
+  const fs = Math.min(dt, 64) / 16.67;                           /* phone tilt: damped spring (about 0.8 damping, no wobble) */
+  GS.vx += ((gx - GS.x) * .03 - GS.vx * .28) * fs; GS.x += GS.vx * fs;
+  GS.vy += ((gy - GS.y) * .03 - GS.vy * .28) * fs; GS.y += GS.vy * fs;
+  GS.vz += ((gz - GS.z) * .03 - GS.vz * .28) * fs; GS.z += GS.vz * fs;
+  CX = camX + GS.x; CY = camY + GS.y; CZ = GS.z;
+  dbg.x = CX; dbg.y = CY; dbg.z = CZ; dbg.tx = gx; dbg.ty = gy; dbg.tz = gz;
   scrollS += (scrollY - scrollS) * Math.min(1, dt / 16) * .1;
   const f = dt / 1000;
   for (let i = 0; i < N; i++) {
@@ -441,8 +487,9 @@ function update(dt, now) {
     if (y < -m) y = H + m; else if (y > H + m) y = -m;
     PX[i] = x; PY[i] = y;
     const z = PZ[i];
-    let sx = x + Math.sin(now * .0005 + PH[i]) * 8 * z + camX * 70 * z;
-    let sy = y + Math.cos(now * .0004 + PH[i]) * 6 * z + camY * 45 * z - scrollS * .22 * z;
+    let sx = x + Math.sin(now * .0005 * PF[i] + PH[i]) * 8 * z + CX * 70 * z;
+    let sy = y + Math.cos(now * .0004 * PF[i] + PH[i]) * 6 * z + CY * 45 * z - scrollS * .22 * z;
+    const dz = 1 + CZ * .07 * z; sx = (sx - W / 2) * dz + W / 2; sy = (sy - H / 2) * dz + H / 2;   /* forward / back: near points move more, like real depth */
     SX[i] = ((sx + m) % WW + WW) % WW - m; SY[i] = ((sy + m) % HH + HH) % HH - m;
   }
 }
@@ -450,9 +497,9 @@ function applyScene(dt) {
   if (scrollDirty) { scrollDirty = false; target = pickScene(); }
   const T = SCENES[target], k = Math.min(1, dt * .0035);
   for (const key in T) S[key] += (T[key] - S[key]) * k;       /* smooth transition between sections */
-  gA.style.transform = `translate3d(${(S.ax / 100 * W - parseFloat(gA.style.width) / 2 - camX * 36).toFixed(1)}px,${(S.ay / 100 * H - parseFloat(gA.style.height) / 2 - camY * 26).toFixed(1)}px,0)`;
-  gB.style.transform = `translate3d(${(S.bx / 100 * W - parseFloat(gB.style.width) / 2 - camX * 20).toFixed(1)}px,${(S.by / 100 * H - parseFloat(gB.style.height) / 2 - camY * 14).toFixed(1)}px,0)`;
-  beam.style.transform = `translate3d(${(S.bm / 100 * W - parseFloat(beam.style.width) / 2 + camX * 14).toFixed(1)}px,0,0) rotate(${(S.br + camX * 3).toFixed(2)}deg)`;
+  gA.style.transform = `translate3d(${(S.ax / 100 * W - parseFloat(gA.style.width) / 2 - CX * 36).toFixed(1)}px,${(S.ay / 100 * H - parseFloat(gA.style.height) / 2 - CY * 26).toFixed(1)}px,0)`;
+  gB.style.transform = `translate3d(${(S.bx / 100 * W - parseFloat(gB.style.width) / 2 - CX * 20).toFixed(1)}px,${(S.by / 100 * H - parseFloat(gB.style.height) / 2 - CY * 14).toFixed(1)}px,0)`;
+  beam.style.transform = `translate3d(${(S.bm / 100 * W - parseFloat(beam.style.width) / 2 + CX * 14).toFixed(1)}px,0,0) rotate(${(S.br + CX * 3).toFixed(2)}deg) perspective(1400px) rotateX(${(-CY * 5).toFixed(2)}deg) rotateY(${(CX * 6).toFixed(2)}deg)`;
   env.style.setProperty('--ei', S.i.toFixed(3));
 }
 function draw() {
@@ -474,7 +521,7 @@ function draw() {
     }
   }
   for (let i = 0; i < N; i++) {                                 /* glowing points, bigger and brighter when nearer */
-    const z = PZ[i], node = i % 7 === 0, r = (2 + z * z * 9) * (node ? 1.5 : 1);
+    const z = PZ[i], node = i % 7 === 0, r = (2 + z * z * 9) * (node ? 1.5 : 1) * (1 + CZ * .2 * z);
     ctx.globalAlpha = Math.min(1, (.2 + .55 * z) * (node ? 1.25 : 1));
     ctx.drawImage(sprite, SX[i] - r, SY[i] - r, r * 2, r * 2);
   }
@@ -494,7 +541,7 @@ function start() { if (running || q === 0 || reduce) return; running = true; las
 function stop(state) { running = false; cancelAnimationFrame(raf); raf = 0; env.classList.add('paused'); env.dataset.state = state || 'paused'; }
 function downgrade() {
   q = Math.max(0, q - 1); env.dataset.q = q; minDt = 33; size();   /* step 1: 30 fps, step 2: fewer points and no lines, step 3: still picture */
-  if (q === 0) { stop('static'); staticFrame(); }
+  if (q === 0) { stop('static'); tilt(false); staticFrame(); }
 }
 function staticFrame() {                                       /* one still picture, no animation */
   update(16, 0); target = pickScene(); Object.assign(S, SCENES[target]); applyScene(1000); draw();
@@ -507,17 +554,24 @@ const onMove = e => { if (e.pointerType === 'touch') return; mx = e.clientX / W 
 const onLeave = () => { mx = my = 0; };
 const onScroll = () => { scrollDirty = true; if (!running && (q === 0 || reduce)) kickStatic(); };
 let sq = 0; function kickStatic() { if (sq) return; sq = requestAnimationFrame(() => { sq = 0; staticFrame(); }); }
-let bb = null, bg = null;
-const onTilt = e => {
-  if (e.gamma == null || e.beta == null) return; if (bb == null) { bb = e.beta; bg = e.gamma; }
-  bb += (e.beta - bb) * .02; bg += (e.gamma - bg) * .02;
-  gx = clamp((e.gamma - bg) / 20, -1, 1) * .5; gy = clamp((e.beta - bb) / 20, -1, 1) * .5;
+let bb = null, bg = null, unsubTilt = null;
+const onTilt = (beta, gamma) => {                              /* data comes from the shared Orient system */
+  if (bb == null) { bb = beta; bg = gamma; }
+  bb += (beta - bb) * .02; bg += (gamma - bg) * .02;           /* slow baseline: the scene settles when the phone is still */
+  const k = clamp(CONTENT.tilt && CONTENT.tilt.env != null ? CONTENT.tilt.env : 1, 0, 2);
+  gx = clamp((gamma - bg) / 20, -1, 1) * .5 * k;               /* left / right */
+  gy = clamp((beta - bb) / 20, -1, 1) * .5 * k;                /* forward / back: slide */
+  gz = clamp((beta - bb) / 25, -1, 1) * k;                     /* forward / back: depth */
 };
-const tiltOn = touch && !reduce && 'DeviceOrientationEvent' in window;
+const tiltOn = touch && !reduce && Orient.supported;
+function tilt(on) {                                            /* never asks for permission; uses data only when it is available */
+  if (!tiltOn) return;
+  if (on && q > 0 && !unsubTilt) unsubTilt = Orient.subscribe(onTilt);
+  else if (!on && unsubTilt) { unsubTilt(); unsubTilt = null; bb = bg = null; gx = gy = gz = 0; }
+}
 function listen(on) {
-  const f = on ? addEventListener : removeEventListener;
-  if (!touch) { f('pointermove', onMove, { passive: true }); document.documentElement[on ? 'addEventListener' : 'removeEventListener']('pointerleave', onLeave); }
-  if (tiltOn) { f('deviceorientation', onTilt, { passive: true }); if (!on) { bb = bg = null; gx = gy = 0; } }
+  if (!touch) { const f = on ? addEventListener : removeEventListener; f('pointermove', onMove, { passive: true }); document.documentElement[on ? 'addEventListener' : 'removeEventListener']('pointerleave', onLeave); }
+  tilt(on);
 }
 addEventListener('scroll', onScroll, { passive: true });
 addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(() => { size(); if (!running) staticFrame(); }, 150); });
