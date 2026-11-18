@@ -279,16 +279,13 @@ card.addEventListener('pointerup', release); card.addEventListener('pointercance
 layout(!reduce);
 let lastW = innerWidth, rt; addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { if (innerWidth !== lastW) { lastW = innerWidth; layout(false); } }, 200); });
 
-/* ---------- loader (timecode) then release the card ---------- */
+/* ---------- loader hand-off: the ID card drops as the loader starts to leave ---------- */
 (function () {
-  const t0 = performance.now(), DUR = 800, tc = $('#timecode'); let done = false;
-  const finish = () => { if (done) return; done = true; $('#loader').classList.add('done'); if (!reduce) wake(); };
-  (function f(now) {
-    const t = clamp((now - t0) / DUR, 0, 1);
-    tc.textContent = '00:00:00:' + String(Math.floor(t * DUR / 1000 * 24)).padStart(2, '0');
-    t < 1 ? requestAnimationFrame(f) : setTimeout(finish, 120);
-  })(t0);
-  setTimeout(finish, 1800);
+  let dropped = false; const drop = () => { if (dropped) return; dropped = true; if (!reduce) wake(); };
+  const ML = window.MALoader;
+  if (ML) { ML.app(); ML.revealed.then(drop); }          /* tells the loader that scripts are ready */
+  else { const el = $('#loader'); if (el) el.remove(); drop(); }   /* no loader script: never block the page */
+  setTimeout(drop, 9000);
 })();
 
 /* ---------- Effect 2: superhero mask reveal ---------- */
@@ -583,10 +580,14 @@ document.addEventListener('visibilitychange', onVis);
 addEventListener('pagehide', () => { stop('off'); listen(false); });
 
 /* start after the first paint so the page itself loads first */
-setTimeout(() => {
+let booted = false;
+const boot = () => {
+  if (booted) return; booted = true;
   listen(!document.hidden);
   if (q === 0 || reduce) { env.dataset.state = 'static'; staticFrame(); } else if (!document.hidden) start();
   requestAnimationFrame(() => env.classList.add('on'));
-}, 700);
+};
+if (window.MALoader) MALoader.revealed.then(() => setTimeout(boot, 250)); else setTimeout(boot, 700);   /* heavy work starts after the loader */
+setTimeout(boot, 9000);
 } catch (err) { const e = document.getElementById('env'); if (e) e.remove(); }
 })();

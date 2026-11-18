@@ -8,13 +8,93 @@
 <meta name="theme-color" content="#121110">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<!-- Google Fonts load without blocking the first paint. If they are slow or fail, the site shows with fallback fonts. -->
+<link id="gf" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet"><style>#loader{display:none!important}</style></noscript>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <!-- 3D "Let's Connect" goo button: Venom Button by exteestudio (MIT), see collab/LICENSE -->
 
-<div id="loader" aria-hidden="true"><span>● REC <b id="timecode">00:00:00:00</b></span></div>
+<!-- MA loader: pure CSS + SVG. The lifecycle script right below decides when the site is ready. -->
+<div id="loader" role="status" aria-live="polite">
+  <div class="ld-glow" aria-hidden="true"></div>
+  <div class="ld-stage" aria-hidden="true">
+    <i class="ld-line l"></i><i class="ld-line r"></i>
+    <div class="ld-ring"></div>
+    <svg class="ld-ma" viewBox="0 0 202 120" focusable="false">
+      <defs><filter id="ldb" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="5"/></filter></defs>
+      <g class="ld-halo" filter="url(#ldb)"><path d="M22 99V21l34 51 34-51v78"/><path d="M112 99L146 21L180 99M123 75H169"/></g>
+      <g class="ld-base"><path pathLength="100" d="M22 99V21l34 51 34-51v78"/><path pathLength="100" d="M112 99L146 21L180 99M123 75H169"/></g>
+      <g class="ld-lit"><path pathLength="100" d="M22 99V21l34 51 34-51v78"/><path pathLength="100" d="M112 99L146 21L180 99M123 75H169"/></g>
+    </svg>
+  </div>
+  <div class="ld-foot"><div class="ld-bar"><i></i></div><span class="ld-label">Loading</span></div>
+</div>
+<script>
+/* MA loader lifecycle. Waits only for what the first screen needs, each with its own time limit.
+   Edit the three numbers below if you ever want to tune it (milliseconds). */
+(function () {
+  var MIN_FIRST = 1500, MIN_REPEAT = 450, MAX = 6000;
+  var d = document, L = d.getElementById('loader'), done = 0, total = 4, revealed = false, t0 = performance.now();
+  var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches, seen = false;
+  try { seen = sessionStorage.getItem('ma-seen') === '1'; } catch (e) {}
+  if (seen) L.classList.add('quick');                    /* already seen this session (refresh): short version */
+  var MIN = reduce ? 350 : seen ? MIN_REPEAT : MIN_FIRST;
+  var bar = L.querySelector('.ld-bar i'), label = L.querySelector('.ld-label');
+  var resolveRev, resolveDone, revealedP = new Promise(function (r) { resolveRev = r; }), doneP = new Promise(function (r) { resolveDone = r; });
+  var wait = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+  var domReady = d.readyState !== 'loading' ? Promise.resolve() : new Promise(function (r) { d.addEventListener('DOMContentLoaded', r, { once: true }); });
+  var appResolve, appP = new Promise(function (r) { appResolve = r; });
+
+  function step() {                                      /* one real task finished: move the line */
+    done++; bar.style.transform = 'scaleX(' + (done / total) + ')'; check();
+  }
+  function track(p, cap) {                               /* every task has its own time limit, success or failure counts as finished */
+    var fin = false, f = function () { if (!fin) { fin = true; step(); } };
+    Promise.race([Promise.resolve(p).catch(function () {}), wait(cap)]).then(f);
+  }
+  function check() {
+    if (revealed || done < total) return;
+    var left = MIN - (performance.now() - t0);
+    left > 0 ? setTimeout(reveal, left) : reveal();
+  }
+  function reveal() {
+    if (revealed) return; revealed = true;
+    bar.style.transform = 'scaleX(1)'; label.textContent = 'Ready';
+    try { sessionStorage.setItem('ma-seen', '1'); } catch (e) {}
+    var main = d.getElementById('top'), nav = d.getElementById('nav');
+    L.classList.add('leave'); main.classList.add('site-in'); nav.classList.add('fade-in');
+    resolveRev();
+    setTimeout(function () { main.classList.remove('site-in'); nav.classList.remove('fade-in'); }, 1300);
+    setTimeout(function () { L.remove(); resolveDone(); }, reduce ? 0 : 950);
+  }
+
+  /* 1. page structure is ready */
+  track(domReady, MAX);
+  /* 2. fonts: stylesheet settled (loaded or failed), then Geist for headlines. Max 1.5 s, never blocks longer */
+  track(domReady.then(function () {
+    var gf = d.getElementById('gf');
+    var sheet = new Promise(function (r) {
+      if (!gf || gf.sheet) return r();
+      gf.addEventListener('load', r); gf.addEventListener('error', r);
+    });
+    return sheet.then(function () { return d.fonts && d.fonts.load ? d.fonts.load('600 64px Geist') : null; });
+  }), 1500);
+  /* 3. the ID card photo in the first screen (other images are lazy and never awaited). Max 3 s */
+  track(domReady.then(function () {
+    var img = d.getElementById('card-photo');
+    if (!img || (img.complete && img.naturalWidth)) return;
+    return new Promise(function (r) { img.addEventListener('load', r); img.addEventListener('error', r); });
+  }), 3000);
+  /* 4. script.js has started (cards, effects and content are built) */
+  track(appP, MAX - 500);
+  /* recovery: whatever happens, the loader leaves at MAX */
+  setTimeout(reveal, MAX);
+
+  window.MALoader = { app: appResolve, revealed: revealedP, done: doneP };
+})();
+</script>
 <div id="progress" aria-hidden="true"></div>
 
 <header id="nav">
