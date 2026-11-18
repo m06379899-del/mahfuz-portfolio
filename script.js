@@ -38,7 +38,9 @@ const CONTENT = {
     { name: "GitHub", url: "https://github.com/m06379899-del", icon: "github" },
     { name: "YouTube", url: "https://www.youtube.com/@Mahfuz-p8f", icon: "youtube" }
   ],
-  goo: "Let’s Connect"
+  goo: "Let’s Connect",
+  goo3d: false,  /* false = light glossy button (safe). true = heavy 3D goo button, needs a good graphics card */
+  env: true      /* true = 3D particle environment behind the site. false = switch it off */
 };
 
 (() => {
@@ -116,7 +118,7 @@ addEventListener('scroll', onScroll, { passive: true }); onScroll();
 
 /* ---------- Effect 1: hanging, stretchy ID card (Verlet rope) ---------- */
 const lan = $('#lanyard'), card = $('#card'), strapLine = $('#strap-line'), strapPath = $('#strap-path');
-$('#strap-tp').textContent = C.strap.repeat(8);
+$('#strap-tp').textContent = C.strap.repeat(2);
 const N = 12, G = .55, DAMP = .982, MAXV = 16;
 let pts = [], seg = 20, ax = 0, ay = 0, cw = 250, ch = 360, pinned = false, running = false, drag = null, rest = 0;
 /* tilt state: springs for the 3D tilt (rx, ry) and a gravity angle (ga) that swings the lanyard */
@@ -327,7 +329,210 @@ function loadGoo() {
   document.body.append(f);
   setTimeout(() => { if (!ready) drop(false); }, 8000);   /* no answer from the 3D page: keep the CSS pill */
 }
-if (!touch && !reduce && innerWidth > 900 && safe(() => localStorage.getItem('goo-slow')) !== '1') {
-  setTimeout(() => ('requestIdleCallback' in window ? requestIdleCallback(loadGoo) : loadGoo()), 3500);
+function gpuOk() {   /* only allow the 3D button on a real graphics card, never on software rendering */
+  try {
+    const gl = document.createElement('canvas').getContext('webgl2'); if (!gl) return false;
+    const x = gl.getExtension('WEBGL_debug_renderer_info'), r = x ? String(gl.getParameter(x.UNMASKED_RENDERER_WEBGL)) : '';
+    return !/swiftshader|llvmpipe|software|basic render/i.test(r) && (navigator.hardwareConcurrency || 4) >= 4;
+  } catch (e) { return false; }
 }
+if (C.goo3d && !touch && !reduce && innerWidth > 900 && safe(() => localStorage.getItem('goo-slow')) !== '1' && gpuOk()) {
+  const near = e => {   /* load the heavy 3D page only when the mouse comes close to the button */
+    const b = $('#goo-link').getBoundingClientRect();
+    if (Math.hypot(e.clientX - (b.left + b.width / 2), e.clientY - (b.top + b.height / 2)) < 260) { removeEventListener('pointermove', near); loadGoo(); }
+  };
+  addEventListener('pointermove', near, { passive: true });
+}
+})();
+
+/* =====================================================================
+   3D ENVIRONMENT: floating depth particles, network lines and soft light.
+   Decorative only. It sits behind all content (z-index -1, pointer-events none)
+   and never touches the ID card, lanyard or the Spider-Man reveal.
+   Switch off with  env: false  in CONTENT.
+   ===================================================================== */
+(() => {
+'use strict';
+try {
+if (CONTENT.env === false) return;
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const touch = matchMedia('(hover: none), (pointer: coarse)').matches;
+const lowEnd = (navigator.hardwareConcurrency || 4) <= 4 || (navigator.deviceMemory || 8) <= 4;
+const saveData = !!(navigator.connection && navigator.connection.saveData);
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
+/* --- DOM: glows + light beam + fog + canvas + vignette (all decorative) --- */
+const env = document.createElement('div');
+env.id = 'env'; env.setAttribute('aria-hidden', 'true');
+env.innerHTML = '<i class="env-glow ga"></i><i class="env-glow gb"></i><i class="env-beam"></i><i class="env-fog"></i><canvas id="env-canvas"></canvas><i class="env-vig"></i>';
+document.body.prepend(env);
+const cv = env.querySelector('canvas'), ctx = cv.getContext('2d');
+const gA = env.querySelector('.ga'), gB = env.querySelector('.gb'), beam = env.querySelector('.env-beam');
+if (!ctx) { env.remove(); return; }
+
+/* --- soft glow sprite, drawn once and reused for every particle --- */
+const sprite = document.createElement('canvas'); sprite.width = sprite.height = 64;
+{ const g = sprite.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gr.addColorStop(0, 'rgba(225,235,255,1)'); gr.addColorStop(.16, 'rgba(120,165,255,.9)');
+  gr.addColorStop(.45, 'rgba(37,99,235,.3)'); gr.addColorStop(1, 'rgba(37,99,235,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 64, 64); }
+
+/* --- scenes: the light moves smoothly when you reach another section --- */
+const SCENES = [
+  { ax: 78, ay: 20, bx: 8,  by: 86, bm: 64, br: 18,  i: 1 },    /* hero */
+  { ax: 18, ay: 30, bx: 86, by: 72, bm: 30, br: -14, i: .85 },  /* projects */
+  { ax: 72, ay: 55, bx: 14, by: 20, bm: 76, br: 22,  i: .8 },   /* process */
+  { ax: 24, ay: 70, bx: 82, by: 24, bm: 20, br: -20, i: .9 },   /* about */
+  { ax: 58, ay: 42, bx: 30, by: 82, bm: 50, br: 10,  i: 1 }     /* contact */
+];
+const SECS = ['#hero', '#work', '#process', '#about', '#contact'].map(s => document.querySelector(s));
+const S = Object.assign({}, SCENES[0]); let target = 0;
+const pickScene = () => {
+  const mid = innerHeight * .5; let best = 0, bd = 1e9;
+  SECS.forEach((el, i) => { if (!el) return; const r = el.getBoundingClientRect();
+    const d = (r.top <= mid && r.bottom >= mid) ? 0 : Math.min(Math.abs(r.top - mid), Math.abs(r.bottom - mid));
+    if (d < bd) { bd = d; best = i; } });
+  return best;
+};
+
+/* --- state --- */
+let W = 0, H = 0, dpr = 1, q = (saveData || reduce) ? 0 : 3, N = 0, MAXN = 0, D = 130;
+let PX, PY, PZ, VX, VY, PH, SX, SY;
+const MAXP = 260, PI_ = new Int16Array(MAXP), PJ_ = new Int16Array(MAXP), PA_ = new Float32Array(MAXP);
+let mx = 0, my = 0, gx = 0, gy = 0, camX = 0, camY = 0, scrollS = scrollY, scrollDirty = true;
+let raf = 0, running = false, last = 0, slow = 0, qtimer = 0, resizeT = 0;
+let minDt = (touch || lowEnd || (navigator.hardwareConcurrency || 4) < 8) ? 33 : 16;   /* frame gap in ms: 16 = 60 fps, 33 = 30 fps */
+
+function build(n) {
+  N = n; PX = new Float32Array(n); PY = new Float32Array(n); PZ = new Float32Array(n); VX = new Float32Array(n);
+  VY = new Float32Array(n); PH = new Float32Array(n); SX = new Float32Array(n); SY = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const z = .18 + Math.pow(Math.random(), 1.5) * .82;            /* depth: .18 far ... 1 near */
+    PX[i] = Math.random() * W; PY[i] = Math.random() * H; PZ[i] = z; PH[i] = Math.random() * 6.28;
+    VX[i] = (Math.random() - .5) * 12 * (.4 + z); VY[i] = -(2 + Math.random() * 7) * (.4 + z);   /* px per second */
+  }
+}
+function size() {
+  W = innerWidth; H = innerHeight;
+  dpr = (touch || lowEnd) ? 1 : Math.min(devicePixelRatio || 1, 1.5);
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  const area = W * H;
+  MAXN = touch ? clamp(Math.round(area / 14000), 22, 34) : clamp(Math.round(area / 24000), 28, 86);
+  if (lowEnd) MAXN = Math.round(MAXN * .7);
+  D = touch ? 105 : clamp(W * .1, 100, 165);
+  const f = reduce ? .65 : q === 3 ? 1 : q === 2 ? (touch ? .75 : 1) : .55;
+  build(Math.max(16, Math.round(MAXN * f)));
+  const gs = Math.max(W, H);
+  gA.style.width = gA.style.height = (gs * .9) + 'px'; gB.style.width = gB.style.height = (gs * .7) + 'px';
+  beam.style.width = (gs * .34) + 'px'; beam.style.height = (gs * 1.7) + 'px'; beam.style.top = (-gs * .3) + 'px';
+}
+
+/* --- one frame of movement --- */
+function update(dt, now) {
+  const m = 40, WW = W + 2 * m, HH = H + 2 * m;
+  const autoX = Math.sin(now * .00013) * (touch ? .35 : .12), autoY = Math.cos(now * .00011) * (touch ? .3 : .1);
+  const k = Math.min(1, dt / 16) * .05;
+  camX += (clamp(mx + gx + autoX, -.8, .8) - camX) * k; camY += (clamp(my + gy + autoY, -.8, .8) - camY) * k;
+  scrollS += (scrollY - scrollS) * Math.min(1, dt / 16) * .1;
+  const f = dt / 1000;
+  for (let i = 0; i < N; i++) {
+    let x = PX[i] + VX[i] * f, y = PY[i] + VY[i] * f;
+    if (x > W + m) x = -m; else if (x < -m) x = W + m;
+    if (y < -m) y = H + m; else if (y > H + m) y = -m;
+    PX[i] = x; PY[i] = y;
+    const z = PZ[i];
+    let sx = x + Math.sin(now * .0005 + PH[i]) * 8 * z + camX * 70 * z;
+    let sy = y + Math.cos(now * .0004 + PH[i]) * 6 * z + camY * 45 * z - scrollS * .22 * z;
+    SX[i] = ((sx + m) % WW + WW) % WW - m; SY[i] = ((sy + m) % HH + HH) % HH - m;
+  }
+}
+function applyScene(dt) {
+  if (scrollDirty) { scrollDirty = false; target = pickScene(); }
+  const T = SCENES[target], k = Math.min(1, dt * .0035);
+  for (const key in T) S[key] += (T[key] - S[key]) * k;       /* smooth transition between sections */
+  gA.style.transform = `translate3d(${(S.ax / 100 * W - parseFloat(gA.style.width) / 2 - camX * 36).toFixed(1)}px,${(S.ay / 100 * H - parseFloat(gA.style.height) / 2 - camY * 26).toFixed(1)}px,0)`;
+  gB.style.transform = `translate3d(${(S.bx / 100 * W - parseFloat(gB.style.width) / 2 - camX * 20).toFixed(1)}px,${(S.by / 100 * H - parseFloat(gB.style.height) / 2 - camY * 14).toFixed(1)}px,0)`;
+  beam.style.transform = `translate3d(${(S.bm / 100 * W - parseFloat(beam.style.width) / 2 + camX * 14).toFixed(1)}px,0,0) rotate(${(S.br + camX * 3).toFixed(2)}deg)`;
+  env.style.setProperty('--ei', S.i.toFixed(3));
+}
+function draw() {
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+  if (q >= 2 || reduce) {                                       /* network lines between near neighbours */
+    let np = 0; const D2 = D * D;
+    for (let i = 0; i < N && np < MAXP; i++) for (let j = i + 1; j < N && np < MAXP; j++) {
+      const dx = SX[i] - SX[j], dy = SY[i] - SY[j], d2 = dx * dx + dy * dy;
+      if (d2 >= D2 || Math.abs(PZ[i] - PZ[j]) > .4) continue;
+      PI_[np] = i; PJ_[np] = j; PA_[np++] = (1 - Math.sqrt(d2) / D) * (PZ[i] + PZ[j]) * .5;
+    }
+    ctx.lineWidth = .8;
+    for (let b = 0; b < 3; b++) {
+      ctx.strokeStyle = b === 0 ? 'rgba(37,99,235,.12)' : b === 1 ? 'rgba(37,99,235,.22)' : 'rgba(80,130,250,.34)';
+      ctx.beginPath(); let any = false;
+      for (let p = 0; p < np; p++) { const a = PA_[p]; if ((a < .25 ? 0 : a < .5 ? 1 : 2) !== b) continue;
+        ctx.moveTo(SX[PI_[p]], SY[PI_[p]]); ctx.lineTo(SX[PJ_[p]], SY[PJ_[p]]); any = true; }
+      if (any) ctx.stroke();
+    }
+  }
+  for (let i = 0; i < N; i++) {                                 /* glowing points, bigger and brighter when nearer */
+    const z = PZ[i], node = i % 7 === 0, r = (2 + z * z * 9) * (node ? 1.5 : 1);
+    ctx.globalAlpha = Math.min(1, (.2 + .55 * z) * (node ? 1.25 : 1));
+    ctx.drawImage(sprite, SX[i] - r, SY[i] - r, r * 2, r * 2);
+  }
+  ctx.globalAlpha = 1;
+}
+
+/* --- loop: runs only while the tab is visible, capped fps, and steps down quality if the device struggles --- */
+function frame(now) {
+  if (!running) return; raf = requestAnimationFrame(frame);
+  const el = now - last; if (el < minDt - 2) return;
+  last = now; const dt = Math.min(el, 64);
+  if (el > minDt * 1.35) slow++; else slow = Math.max(0, slow - 1);
+  if (slow > 40) { slow = 0; downgrade(); if (!running) return; }
+  update(dt, now); applyScene(dt); draw();
+}
+function start() { if (running || q === 0 || reduce) return; running = true; last = performance.now(); env.classList.remove('paused'); env.dataset.state = 'running'; raf = requestAnimationFrame(frame); }
+function stop(state) { running = false; cancelAnimationFrame(raf); raf = 0; env.classList.add('paused'); env.dataset.state = state || 'paused'; }
+function downgrade() {
+  q = Math.max(0, q - 1); env.dataset.q = q; minDt = 33; size();   /* step 1: 30 fps, step 2: fewer points and no lines, step 3: still picture */
+  if (q === 0) { stop('static'); staticFrame(); }
+}
+function staticFrame() {                                       /* one still picture, no animation */
+  update(16, 0); target = pickScene(); Object.assign(S, SCENES[target]); applyScene(1000); draw();
+}
+env.dataset.q = q;
+size(); env.dataset.state = 'starting';
+
+/* --- input: mouse parallax, optional phone tilt (never asks for permission) --- */
+const onMove = e => { if (e.pointerType === 'touch') return; mx = e.clientX / W - .5; my = e.clientY / H - .5; };
+const onLeave = () => { mx = my = 0; };
+const onScroll = () => { scrollDirty = true; if (!running && (q === 0 || reduce)) kickStatic(); };
+let sq = 0; function kickStatic() { if (sq) return; sq = requestAnimationFrame(() => { sq = 0; staticFrame(); }); }
+let bb = null, bg = null;
+const onTilt = e => {
+  if (e.gamma == null || e.beta == null) return; if (bb == null) { bb = e.beta; bg = e.gamma; }
+  bb += (e.beta - bb) * .02; bg += (e.gamma - bg) * .02;
+  gx = clamp((e.gamma - bg) / 20, -1, 1) * .5; gy = clamp((e.beta - bb) / 20, -1, 1) * .5;
+};
+const tiltOn = touch && !reduce && 'DeviceOrientationEvent' in window;
+function listen(on) {
+  const f = on ? addEventListener : removeEventListener;
+  if (!touch) { f('pointermove', onMove, { passive: true }); document.documentElement[on ? 'addEventListener' : 'removeEventListener']('pointerleave', onLeave); }
+  if (tiltOn) { f('deviceorientation', onTilt, { passive: true }); if (!on) { bb = bg = null; gx = gy = 0; } }
+}
+addEventListener('scroll', onScroll, { passive: true });
+addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(() => { size(); if (!running) staticFrame(); }, 150); });
+const onVis = () => {
+  if (document.hidden) { listen(false); if (running) stop('paused'); }
+  else { listen(true); if (q > 0 && !reduce) start(); }
+};
+document.addEventListener('visibilitychange', onVis);
+addEventListener('pagehide', () => { stop('off'); listen(false); });
+
+/* start after the first paint so the page itself loads first */
+setTimeout(() => {
+  listen(!document.hidden);
+  if (q === 0 || reduce) { env.dataset.state = 'static'; staticFrame(); } else if (!document.hidden) start();
+  requestAnimationFrame(() => env.classList.add('on'));
+}, 700);
+} catch (err) { const e = document.getElementById('env'); if (e) e.remove(); }
 })();
