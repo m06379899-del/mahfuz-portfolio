@@ -6,8 +6,9 @@
 }
 
 /* ---------- floating button (robotic core) ---------- */
+/* bottom-LEFT, stacked above the sound button (#snd) so the Netlify badge on the right stays clear */
 #ai-fab{
-  position:fixed;right:max(18px,env(safe-area-inset-right,0px));bottom:calc(20px + env(safe-area-inset-bottom,0px));
+  position:fixed;left:max(18px,env(safe-area-inset-left,0px));bottom:calc(72px + env(safe-area-inset-bottom,0px));
   z-index:var(--ai-z);width:58px;height:58px;border-radius:50%;
   display:grid;place-items:center;color:#dbeafe;
   background:linear-gradient(145deg,#1b2c5c,#0c1226 55%,#080d1c);
@@ -49,8 +50,8 @@ svg.ai-bot .tip{fill:#93c5fd;animation:aiTip 1.8s ease-in-out infinite;transform
 
 /* ---------- panel ---------- */
 #ai-panel{
-  position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(90px + env(safe-area-inset-bottom,0px));
-  z-index:var(--ai-z);width:min(410px,calc(100vw - 28px));height:min(620px,calc(100dvh - 118px));
+  position:fixed;left:max(16px,env(safe-area-inset-left,0px));bottom:calc(142px + env(safe-area-inset-bottom,0px));
+  z-index:var(--ai-z);width:min(410px,calc(100vw - 28px));height:min(600px,calc(100dvh - 162px));
   display:flex;flex-direction:column;overflow:hidden;
   background:rgba(22,21,19,.86);
   -webkit-backdrop-filter:blur(22px) saturate(1.3);backdrop-filter:blur(22px) saturate(1.3);
@@ -200,10 +201,10 @@ svg.ai-bot .tip{fill:#93c5fd;animation:aiTip 1.8s ease-in-out infinite;transform
 /* ---------- mobile ---------- */
 @media (max-width:560px){
   #ai-panel{
-    right:8px;left:8px;width:auto;height:calc(100dvh - 96px);bottom:calc(84px + env(safe-area-inset-bottom,0px));
+    right:8px;left:8px;width:auto;height:calc(100dvh - 162px);bottom:calc(142px + env(safe-area-inset-bottom,0px));
     border-radius:18px;
   }
-  #ai-fab{right:14px}
+  #ai-fab{left:14px}
 }
 
 /* ---------- reduced motion ---------- */
