@@ -41,7 +41,8 @@ const CONTENT = {
   goo: "Let’s Connect",
   goo3d: false,  /* false = light glossy button (safe). true = heavy 3D goo button, needs a good graphics card */
   env: true,     /* true = 3D particle environment behind the site. false = switch it off */
-  tilt: { card: 1, env: 1 }   /* phone-tilt strength, set separately: 1 = normal, 0 = off, 1.5 = stronger (max 2) */
+  tilt: { card: 1, env: 1 },  /* phone-tilt strength, set separately: 1 = normal, 0 = off, 1.5 = stronger (max 2) */
+  sound: { files: {} }        /* sounds are built in. To use your own file for one sound: { click: "assets/sounds/click.mp3" } */
 };
 
 /* =====================================================================
@@ -126,6 +127,7 @@ $('#copy').onclick = async function () {
   try { await navigator.clipboard.writeText(C.email); }
   catch (e) { const t = h('textarea'); t.value = C.email; document.body.append(t); t.select(); safe(() => document.execCommand('copy')); t.remove(); }
   this.textContent = 'Copied'; setTimeout(() => { this.textContent = 'Copy'; }, 1600);
+  document.dispatchEvent(new CustomEvent('ma:success'));   /* the sound system listens for this */
 };
 const ICONS = {
   facebook: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.101 23.691v-7.98H6.627v-3.667h2.474v-1.58c0-4.085 1.848-5.978 5.858-5.978.401 0 .955.042 1.468.103a8.68 8.68 0 0 1 1.141.195v3.325a8.623 8.623 0 0 0-.653-.036 26.805 26.805 0 0 0-.733-.009c-.707 0-1.259.096-1.675.309a1.686 1.686 0 0 0-.679.622c-.258.42-.374.995-.374 1.752v1.297h3.919l-.386 2.103-.287 1.564h-3.246v8.245C19.396 23.238 24 18.179 24 12.044c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.628 3.874 10.35 9.101 11.647Z"/></svg>',
@@ -590,4 +592,206 @@ const boot = () => {
 if (window.MALoader) MALoader.revealed.then(() => setTimeout(boot, 250)); else setTimeout(boot, 700);   /* heavy work starts after the loader */
 setTimeout(boot, 9000);
 } catch (err) { const e = document.getElementById('env'); if (e) e.remove(); }
+})();
+
+/* =====================================================================
+   SOUND SYSTEM. Off by default, only starts after a deliberate click on the
+   sound control, never autoplays, never needed to use the site.
+   - Sounds are synthesised here with the Web Audio API (original, no files, no licences).
+   - To use your own file for any sound: put it in assets/sounds/ and list it in
+     CONTENT.sound.files, for example { click: "assets/sounds/click.mp3" }.
+     If a file is missing or cannot be decoded, the built-in sound plays instead.
+   - Other code can call MASound.play('success') or dispatch the events
+     'ma:success' (form sent, copied) and 'ma:terminal' (command executed).
+   ===================================================================== */
+const MASound = (() => {
+'use strict';
+const KEY = 'ma-sound-v1', FILES = (CONTENT.sound && CONTENT.sound.files) || {};
+const CATS = { ui: 'Clicks & navigation', cards: 'Project cards', id: 'ID card', move: 'Page transitions', fb: 'Success & terminal' };
+const MAX_VOICES = 5, ANY_GAP = 30, ESSENTIAL = ['click', 'nav'];
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const AC = window.AudioContext || window.webkitAudioContext;
+let failed = false, ctx = null, master = null, active = 0, lastAny = 0;
+const last = {}, bufs = {};
+
+/* ---------- tiny synth helpers (each sound = a few short soft partials) ---------- */
+const noiseCache = new WeakMap();
+const noise = c => { let b = noiseCache.get(c); if (!b) { b = c.createBuffer(1, c.sampleRate, c.sampleRate); const d = b.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; noiseCache.set(c, b); } return b; };
+const env = (c, g, t, gain, dur, att) => { g.gain.setValueAtTime(.0001, t); g.gain.linearRampToValueAtTime(gain, t + att); g.gain.exponentialRampToValueAtTime(.0001, t + dur); };
+function tone(c, o, t, f0, f1, dur, gain, type, att) {
+  const osc = c.createOscillator(), g = c.createGain(); osc.type = type || 'sine';
+  osc.frequency.setValueAtTime(f0, t); if (f1 && f1 !== f0) osc.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  env(c, g, t, gain, dur, att || .004); osc.connect(g); g.connect(o); osc.start(t); osc.stop(t + dur + .03);
+}
+function hiss(c, o, t, f0, f1, dur, gain, q, type, att) {
+  const s = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain(); s.buffer = noise(c);
+  f.type = type || 'bandpass'; f.Q.value = q || 1; f.frequency.setValueAtTime(f0, t); f.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  env(c, g, t, gain, dur, att || .004); s.connect(f); f.connect(g); g.connect(o); s.start(t); s.stop(t + dur + .03);
+}
+
+/* ---------- the sound library: cat = preference group, cd = cooldown (ms), len = length (s) ---------- */
+const LIB = {
+  click:      { cat: 'ui',    cd: 60,  len: .1,  fn(c, t, o) { tone(c, o, t, 1100, 620, .05, .10); tone(c, o, t, 2200, 1500, .022, .03, 'triangle'); } },
+  nav:        { cat: 'ui',    cd: 90,  len: .14, fn(c, t, o) { tone(c, o, t, 640, 860, .09, .09); tone(c, o, t + .012, 1280, 1500, .07, .03); } },
+  cardHover:  { cat: 'cards', cd: 160, len: .06, fn(c, t, o) { tone(c, o, t, 1500, 1350, .035, .022); } },
+  cardOpen:   { cat: 'cards', cd: 120, len: .22, fn(c, t, o) { tone(c, o, t, 420, 630, .16, .09); tone(c, o, t + .02, 840, 1260, .12, .035); } },
+  idGrab:     { cat: 'id',    cd: 150, len: .16, fn(c, t, o) { tone(c, o, t, 190, 110, .11, .16); hiss(c, o, t, 900, 700, .03, .05, 1.2); } },
+  idRelease:  { cat: 'id',    cd: 200, len: .32, fn(c, t, o) { hiss(c, o, t, 1400, 350, .26, .09, .9, 'bandpass', .03); tone(c, o, t, 140, 100, .12, .05); } },
+  transition: { cat: 'move',  cd: 900, len: .55, fn(c, t, o) { hiss(c, o, t, 300, 900, .45, .045, .8, 'bandpass', .12); tone(c, o, t, 220, 330, .4, .03, 'sine', .1); } },
+  success:    { cat: 'fb',    cd: 400, len: .8,  fn(c, t, o) { tone(c, o, t, 659.25, 0, .5, .10, 'sine', .006); tone(c, o, t + .09, 987.77, 0, .6, .08, 'sine', .006); tone(c, o, t + .18, 1318.5, 0, .7, .05, 'sine', .006); } },
+  terminal:   { cat: 'fb',    cd: 120, len: .2,  fn(c, t, o) { tone(c, o, t, 1800, 1700, .02, .05, 'triangle'); tone(c, o, t + .06, 1800, 1700, .02, .05, 'triangle'); tone(c, o, t + .06, 520, 600, .1, .06); } },
+  terminalKey:{ cat: 'fb',    cd: 40,  len: .03, fn(c, t, o) { hiss(c, o, t, 3500, 3000, .012, .03, 1, 'highpass'); tone(c, o, t, 1600, 1400, .015, .02, 'triangle'); } }
+};
+
+/* ---------- saved preferences ---------- */
+function load() {
+  let s = {}; try { s = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) {}
+  const cats = {}; for (const k in CATS) cats[k] = !(s.cats && s.cats[k] === false);
+  return { on: s.on === true, vol: Number.isFinite(s.vol) ? clamp(s.vol, 0, 100) : 60, cats };
+}
+const cfg = load();
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(cfg)); } catch (e) {} };
+const gainFor = v => Math.pow(v / 100, 2) * .9;          /* perceptual curve: the slider feels even */
+const supported = () => !!AC && !failed;
+
+/* ---------- one shared audio context, created only after a user gesture ---------- */
+function ensure() {
+  if (ctx) return ctx; if (!AC || failed) return null;
+  try {
+    ctx = new AC({ latencyHint: 'interactive' });
+    master = ctx.createGain(); master.gain.value = gainFor(cfg.vol);
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 9000;       /* keeps everything soft */
+    const cp = ctx.createDynamicsCompressor(); cp.threshold.value = -18; cp.knee.value = 24; cp.ratio.value = 6; cp.attack.value = .003; cp.release.value = .2;
+    master.connect(lp); lp.connect(cp); cp.connect(ctx.destination);
+  } catch (e) { ctx = null; failed = true; ui.render(); return null; }
+  return ctx;
+}
+function loadFile(name) {                                 /* optional custom file: loads once, falls back silently */
+  const url = FILES[name]; if (!url || bufs[name] !== undefined || !ctx) return; bufs[name] = 'loading';
+  fetch(url).then(r => { if (!r.ok) throw 0; return r.arrayBuffer(); })
+    .then(ab => new Promise((res, rej) => ctx.decodeAudioData(ab, res, rej)))
+    .then(b => { bufs[name] = b; }, () => { bufs[name] = null; });
+}
+function playFile(name, t) {
+  const b = bufs[name]; if (!FILES[name]) return false;
+  if (b === undefined) { loadFile(name); return false; }
+  if (!b || b === 'loading') return false;
+  const s = ctx.createBufferSource(); s.buffer = b; s.connect(master); s.start(t); return true;
+}
+function play(name) {
+  try {
+    if (!cfg.on || cfg.vol <= 0) return;
+    const d = LIB[name]; if (!d || !cfg.cats[d.cat]) return;
+    const now = performance.now();
+    if (now - (last[name] || 0) < d.cd || (d.cat !== 'fb' && now - lastAny < ANY_GAP) || active >= MAX_VOICES) return;   /* cooldowns + voice limit */
+    const c = ensure(); if (!c) return;
+    if (c.state !== 'running') { c.resume && c.resume().catch(() => {}); return; }
+    last[name] = lastAny = now; active++; setTimeout(() => { active--; }, d.len * 1000 + 120);
+    const t = c.currentTime + .005;
+    if (!playFile(name, t)) d.fn(c, t, master);
+  } catch (e) {}
+}
+function setOn(on) {
+  cfg.on = !!on && supported(); save();
+  if (cfg.on) {
+    const c = ensure();
+    if (c) { ESSENTIAL.forEach(loadFile); (c.resume ? c.resume() : Promise.resolve()).then(() => play('click'), () => {}); }
+  } else if (ctx && ctx.state === 'running') ctx.suspend().catch(() => {});
+  ui.render();
+}
+const unlock = () => { if (cfg.on && supported()) { const c = ensure(); if (c && c.state === 'suspended') c.resume().catch(() => {}); } };
+addEventListener('pointerdown', unlock, { capture: true, passive: true });
+addEventListener('keydown', unlock, { capture: true, passive: true });
+document.addEventListener('visibilitychange', () => {       /* silent and idle in a hidden tab */
+  if (!ctx) return; if (document.hidden) { if (ctx.state === 'running') ctx.suspend().catch(() => {}); } else if (cfg.on) ctx.resume().catch(() => {});
+});
+
+/* ---------- the control panel ---------- */
+const ui = (() => {
+  let root, btn, panel, sw, vol, volv, live, built = false;
+  const ICON_ON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
+  const ICON_OFF = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z"/><path d="M16 9.5l5 5M21 9.5l-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
+  function build() {
+    if (built) return; built = true;
+    root = document.createElement('div'); root.id = 'snd';
+    const cats = Object.keys(CATS).map(k => `<label class="snd-check"><input type="checkbox" data-cat="${k}"><span>${CATS[k]}</span></label>`).join('');
+    root.innerHTML =
+      '<button type="button" id="snd-btn" class="snd-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="snd-panel"><span class="snd-ico"></span><span class="snd-dot" aria-hidden="true"></span><span class="snd-state"></span></button>' +
+      '<div id="snd-panel" class="snd-panel" role="dialog" aria-label="Sound settings" hidden>' +
+        '<div class="snd-row"><span id="snd-sl">Sound</span><button type="button" id="snd-sw" class="snd-sw" role="switch" aria-checked="false" aria-labelledby="snd-sl"><i></i></button></div>' +
+        '<div class="snd-vol"><label for="snd-vol">Volume</label><input id="snd-vol" type="range" min="0" max="100" step="5"><output id="snd-volv" for="snd-vol"></output></div>' +
+        '<fieldset class="snd-cats"><legend>Play sounds for</legend>' + cats + '</fieldset>' +
+        '<p class="snd-note">Off by default. Your choice is saved on this device. Nothing on the site needs sound.</p>' +
+      '</div><div class="sr-only" id="snd-live" role="status" aria-live="polite"></div>';
+    document.body.append(root);
+    btn = root.querySelector('#snd-btn'); panel = root.querySelector('#snd-panel'); sw = root.querySelector('#snd-sw');
+    vol = root.querySelector('#snd-vol'); volv = root.querySelector('#snd-volv'); live = root.querySelector('#snd-live');
+    btn.onclick = () => toggle(panel.hidden);
+    sw.onclick = () => { setOn(!cfg.on); live.textContent = cfg.on ? 'Sound on' : 'Sound off'; };
+    vol.oninput = () => { cfg.vol = +vol.value; if (master) master.gain.setTargetAtTime(gainFor(cfg.vol), ctx.currentTime, .02); label(); };
+    vol.onchange = () => { save(); play('click'); };           /* a small preview at the new volume */
+    root.querySelectorAll('[data-cat]').forEach(i => { i.onchange = () => { cfg.cats[i.dataset.cat] = i.checked; save(); }; });
+    document.addEventListener('pointerdown', e => { if (!panel.hidden && !root.contains(e.target)) toggle(false); }, true);
+    root.addEventListener('keydown', e => { if (e.key === 'Escape' && !panel.hidden) { toggle(false); btn.focus(); } });
+    render();
+  }
+  const label = () => { volv.textContent = cfg.vol + '%'; vol.setAttribute('aria-valuetext', cfg.vol + ' percent'); };
+  function toggle(open) { panel.hidden = !open; btn.setAttribute('aria-expanded', open ? 'true' : 'false'); }
+  function render() {
+    if (!built) return;
+    const ok = supported(), on = ok && cfg.on;
+    root.classList.toggle('on', on); root.classList.toggle('na', !ok);
+    btn.querySelector('.snd-ico').innerHTML = on ? ICON_ON : ICON_OFF;
+    btn.querySelector('.snd-state').textContent = !ok ? 'Sound unavailable' : on ? 'Sound on' : 'Sound off';
+    btn.setAttribute('aria-label', !ok ? 'Sound settings: sound is not available in this browser' : 'Sound settings, sound is ' + (on ? 'on' : 'off'));
+    sw.setAttribute('aria-checked', on ? 'true' : 'false'); sw.disabled = !ok;
+    vol.value = cfg.vol; label();
+    root.querySelectorAll('[data-cat]').forEach(i => { i.checked = cfg.cats[i.dataset.cat]; });
+  }
+  return { build, render };
+})();
+
+/* ---------- where sounds are triggered (one delegated listener, one sound per interaction) ---------- */
+document.addEventListener('click', e => {
+  if (!cfg.on) return; const t = e.target; if (!t.closest || t.closest('#snd')) return;
+  if (t.closest('.card')) return play('cardOpen');
+  const el = t.closest('a,button,[role="button"]'); if (!el) return;
+  if (el.id === 'copy') return;                          /* it plays the success chime when the copy worked */
+  play(el.closest('#nav') ? 'nav' : 'click');
+});
+document.addEventListener('pointerover', e => {                  /* soft tick when the mouse enters a project card (never on touch) */
+  if (!cfg.on || e.pointerType !== 'mouse') return; const c = e.target.closest && e.target.closest('.card');
+  if (c && !(e.relatedTarget && c.contains(e.relatedTarget))) play('cardHover');
+});
+document.addEventListener('ma:success', () => play('success'));    /* form sent, email copied */
+document.addEventListener('ma:terminal', () => play('terminal'));  /* a terminal command was executed */
+document.addEventListener('ma:terminal-key', () => play('terminalKey'));
+const cardEl = document.getElementById('card');
+if (cardEl) {                                                     /* ID card: soft thock on grab, light swing on release */
+  let sx = 0, sy = 0, moved = false, held = false;
+  cardEl.addEventListener('pointerdown', e => { held = true; moved = false; sx = e.clientX; sy = e.clientY; play('idGrab'); });
+  cardEl.addEventListener('pointermove', e => { if (held && Math.hypot(e.clientX - sx, e.clientY - sy) > 8) moved = true; });
+  const up = () => { if (held && moved) play('idRelease'); held = false; };
+  cardEl.addEventListener('pointerup', up); cardEl.addEventListener('pointercancel', up);
+}
+(function () {                                                     /* gentle sound when a new section becomes the main one */
+  if (!('IntersectionObserver' in window)) return; let cur = null, tm = 0, first = true;
+  const io = new IntersectionObserver(es => es.forEach(en => {
+    if (!en.isIntersecting || en.target === cur) return; cur = en.target;
+    if (first) { first = false; return; }
+    clearTimeout(tm); tm = setTimeout(() => { if (!document.getElementById('loader')) play('transition'); }, 260);
+  }), { rootMargin: '-45% 0px -45% 0px' });
+  ['#hero', '#work', '#process', '#about', '#contact'].forEach(s => { const el = document.querySelector(s); if (el) io.observe(el); });
+})();
+
+/* ---------- test hook: render a sound offline and measure it (nothing is played) ---------- */
+async function measure(name) {
+  const d = LIB[name], oc = new OfflineAudioContext(1, 44100, 44100), g = oc.createGain(); g.gain.value = gainFor(100); g.connect(oc.destination);
+  d.fn(oc, .005, g); const x = (await oc.startRendering()).getChannelData(0); let pk = 0, sq = 0, end = 0, bad = false;
+  for (let i = 0; i < x.length; i++) { const a = Math.abs(x[i]); if (a !== a) bad = true; if (a > pk) pk = a; sq += a * a; if (a > .002) end = i; }
+  return { peak: +pk.toFixed(3), rms: +Math.sqrt(sq / x.length).toFixed(4), seconds: +(end / 44100).toFixed(2), nan: bad };
+}
+const start = () => ui.build();
+if (window.MALoader) { MALoader.done.then(start); setTimeout(start, 9000); } else start();
+return { play, setOn, measure, names: Object.keys(LIB), get enabled() { return cfg.on; }, get volume() { return cfg.vol; }, get supported() { return supported(); }, get voices() { return active; }, get gain() { return master ? +master.gain.value.toFixed(3) : null; }, get state() { return ctx ? ctx.state : 'none'; } };
 })();
