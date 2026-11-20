@@ -579,6 +579,8 @@ const onVis = () => {
   else { listen(true); if (q > 0 && !reduce) start(); }
 };
 document.addEventListener('visibilitychange', onVis);
+document.addEventListener('ma:terminal-open', () => { if (running) stop('paused'); });      /* the terminal window is open: rest the background */
+document.addEventListener('ma:terminal-close', () => { if (!running && q > 0 && !reduce && !document.hidden) start(); });
 addEventListener('pagehide', () => { stop('off'); listen(false); });
 
 /* start after the first paint so the page itself loads first */
