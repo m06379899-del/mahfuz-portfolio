@@ -41,7 +41,7 @@ const CONTENT = {
   goo: "Let’s Connect",
   goo3d: false,  /* false = light glossy button (safe). true = heavy 3D goo button, needs a good graphics card */
   env: true,     /* true = 3D particle environment behind the site. false = switch it off */
-  tilt: { card: 1, env: 1 },  /* phone-tilt strength, set separately: 1 = normal, 0 = off, 1.5 = stronger (max 2) */
+  tilt: { card: 0.5, env: 1 },  /* phone-tilt strength, set separately: 1 = normal, 0 = off, 1.5 = stronger (max 2). 0.5 = subtle, realistic card swing */
   sound: { files: {} }        /* sounds are built in. To use your own file for one sound: { click: "assets/sounds/click.mp3" } */
 };
 
@@ -176,7 +176,7 @@ let pts = [], seg = 20, ax = 0, ay = 0, cw = 250, ch = 360, pinned = false, runn
 const T = { rx: 0, ry: 0, vx: 0, vy: 0, tx: 0, ty: 0, ga: 0, gt: 0 };
 let heroVisible = true;
 function tiltStep() {
-  const K = .08, D = .17;                       /* spring stiffness and damping */
+  const K = .055, D = .2;                       /* spring stiffness and damping: soft + heavily damped, so the card settles like a real badge */
   T.vx += (T.tx - T.rx) * K - T.vx * D; T.rx += T.vx;
   T.vy += (T.ty - T.ry) * K - T.vy * D; T.ry += T.vy;
   T.ga += (T.gt - T.ga) * .12;
