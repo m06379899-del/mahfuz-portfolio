@@ -11,8 +11,12 @@
 <!-- Google Fonts load without blocking the first paint. If they are slow or fail, the site shows with fallback fonts. -->
 <link id="gf" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 <noscript><link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet"><style>#loader{display:none!important}</style></noscript>
+<!-- Bengali font for the AI assistant chat (non-blocking, same pattern as above) -->
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;500;600&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="terminal.css">
+<link rel="stylesheet" href="chat.css">
 </head>
 <body>
 <!-- 3D "Let's Connect" goo button: Venom Button by exteestudio (MIT), see collab/LICENSE -->
@@ -226,5 +230,6 @@
 
 <script src="script.js" defer></script>
 <script src="terminal.js" defer></script>
+<script src="chat.js" defer></script>
 </body>
 </html>

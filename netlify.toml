@@ -1,0 +1,26 @@
+# Netlify configuration — Mahfuz's portfolio + AI assistant
+[build]
+  publish = "."
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+# The chat endpoint: browser -> /api/chat -> serverless function
+[[redirects]]
+  from = "/api/chat"
+  to = "/.netlify/functions/chat"
+  status = 200
+
+# Keep the raw knowledge base file from being publicly browsable
+# (its content is embedded server-side inside the function instead)
+[[redirects]]
+  from = "/mahfuz-portfolio-knowledge-base.md"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[headers]]
+  for = "/api/*"
+  [headers.values]
+    Cache-Control = "no-store"
