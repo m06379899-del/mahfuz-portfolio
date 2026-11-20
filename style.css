@@ -303,3 +303,21 @@ h2{font-size:clamp(38px,6vw,84px);margin-bottom:36px;max-width:14ch}
 .snd-note{margin-top:14px;padding-top:12px;border-top:1px solid var(--line);font-size:12px;color:#7d7870}
 #snd.on .snd-cats{opacity:1}
 @media (max-width:520px){.snd-state{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}.snd-btn{padding:0 12px 0 10px;gap:8px}}
+
+/* ---------- project cards: live demo link (only cards with an https link get these) ---------- */
+/* the title keeps its exact h3 look; it only gets an animated blue underline on hover */
+.card-body .card-title-link{display:inline;margin:0;width:auto;color:inherit;font:inherit;letter-spacing:inherit;text-decoration:none;padding-bottom:2px;
+  background:linear-gradient(var(--accent),var(--accent)) 0 100%/0 1.5px no-repeat;transition:background-size .35s cubic-bezier(.2,.7,.2,1),color .25s}
+.card-body .card-title-link:hover,.card-body .card-title-link:focus-visible{color:#fff;background-size:100% 1.5px}
+.thumb-link{position:absolute;inset:0;z-index:1;display:block}
+.thumb .status{z-index:2;pointer-events:none}
+.thumb.has-link svg{transition:transform .6s cubic-bezier(.2,.7,.2,1)}
+.thumb.has-link:hover svg{transform:scale(1.04)}
+.thumb.has-link::after{content:"Live Demo ↗";position:absolute;z-index:2;right:14px;bottom:12px;padding:6px 12px;border:1px solid rgba(var(--accent-rgb)/.6);border-radius:999px;background:rgba(18,17,16,.82);color:#fff;font:500 11px/1 var(--mono);letter-spacing:.06em;opacity:0;transform:translateY(6px);transition:opacity .3s,transform .3s;pointer-events:none}
+.thumb.has-link:hover::after{opacity:1;transform:none}
+.card-body .card-btn{display:inline-flex;align-items:center;gap:8px;margin-top:6px;padding:0 20px;min-height:44px;border:1px solid rgba(var(--accent-rgb)/.7);border-radius:999px;background:rgba(var(--accent-rgb)/.16);color:#fff;font-size:14px;font-weight:500;width:max-content;max-width:100%;
+  transition:background .25s,border-color .25s,box-shadow .25s,transform .25s}
+.card-btn .arrow{display:inline-block;transition:transform .25s}
+.card-body .card-btn:hover,.card-body .card-btn:focus-visible{background:var(--accent);border-color:var(--accent);transform:translateY(-1px);box-shadow:0 0 0 4px rgba(var(--accent-rgb)/.2),0 10px 28px -10px rgba(var(--accent-rgb)/.9)}
+.card-btn:hover .arrow,.card-btn:focus-visible .arrow{transform:translate(2px,-2px)}
+.card-btn:active{transform:translateY(0)}

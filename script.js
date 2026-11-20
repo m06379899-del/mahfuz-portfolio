@@ -18,7 +18,7 @@ const CONTENT = {
       tech: ["Python", "Gemini API", "SQLite", "Voice input", "Voice output"], link: "", linkText: "" },
     { title: "Student Learning Platform", status: "In Development", art: "dash",
       desc: "An AI-powered educational platform for students featuring textbook PDF question answering, MCQs, notices, bookmarks, and progress tracking.",
-      tech: ["AI", "PDF Q&A", "MCQs", "Notices", "Bookmarks", "Progress tracking"], link: "", linkText: "" }
+      tech: ["AI", "PDF Q&A", "MCQs", "Notices", "Bookmarks", "Progress tracking"], link: "https://sohojshekha.netlify.app/", linkText: "Live Demo ↗" }
   ],
   steps: [
     { t: "Idea", d: "Spot a problem worth solving." },
@@ -108,11 +108,17 @@ const ART = {
 };
 C.projects.forEach(p => {
   const a = h('article', 'card'), t = h('div', 'thumb'), b = h('div', 'card-body'), ul = h('ul', 'tech');
+  const url = p.link && /^https:\/\//.test(p.link) ? p.link : '';          /* only real https links become clickable */
+  const ext = (el, label) => { el.href = url; el.target = '_blank'; el.rel = 'noopener noreferrer'; el.setAttribute('aria-label', label + ' (opens in a new tab)'); return el; };
   t.insertAdjacentHTML('beforeend', ART[p.art] || ''); t.append(h('span', 'status', p.status));
+  if (url) { t.classList.add('has-link'); const tl = ext(h('a', 'thumb-link'), p.title + ', live preview'); tl.tabIndex = -1; tl.setAttribute('aria-hidden', 'true'); t.append(tl); }   /* preview image is clickable (the title link is the keyboard / screen-reader one) */
   p.tech.forEach(x => ul.append(h('li', '', x)));
-  b.append(h('h3', '', p.title), ul, h('p', '', p.desc));
-  if (p.link) { const l = h('a', '', p.linkText || 'View project'); l.href = p.link; l.target = '_blank'; l.rel = 'noopener noreferrer'; b.append(l); }
-  else b.append(h('p', 'card-foot', 'Repository link coming soon'));
+  const title = h('h3'); if (url) title.append(ext(h('a', 'card-title-link', p.title), p.title)); else title.textContent = p.title;
+  b.append(title, ul, h('p', '', p.desc));
+  if (url) {
+    const label = (p.linkText || 'Live Demo').replace(/\s*↗\s*$/, ''), btn = ext(h('a', 'card-btn'), label + ': ' + p.title);
+    btn.append(h('span', '', label), h('span', 'arrow', '↗')); btn.lastChild.setAttribute('aria-hidden', 'true'); b.append(btn);
+  } else b.append(h('p', 'card-foot', 'Repository link coming soon'));
   a.append(t, b); $('#rail').append(a);
 });
 const rail = $('#rail'), stepW = () => (rail.firstElementChild ? rail.firstElementChild.offsetWidth : 300) + 18;

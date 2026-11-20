@@ -5,10 +5,12 @@
    ===================================================================== */
 
 /* ---------- launcher button (bottom right, same family as the sound button) ---------- */
-#term-open{position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(18px + env(safe-area-inset-bottom,0px));z-index:80;
+#term-open{position:fixed;right:max(16px,env(safe-area-inset-right,0px));top:calc(22px + env(safe-area-inset-top,0px));z-index:80;
   display:inline-flex;align-items:center;gap:9px;height:40px;padding:0 14px 0 12px;border:1px solid var(--line);border-radius:999px;
   background:rgba(26,25,23,.9);color:var(--body);font:500 11px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;cursor:pointer;
-  opacity:0;transform:translateY(8px);transition:opacity .5s ease,transform .5s cubic-bezier(.2,.7,.2,1),border-color .25s,color .25s}
+  opacity:0;transform:translateY(-8px);transition:opacity .5s ease,transform .5s cubic-bezier(.2,.7,.2,1),border-color .25s,color .25s}
+/* on narrower screens the menu bar spans the width, so the button sits just under it, still in the right corner */
+@media (max-width:1099px){#term-open{top:calc(84px + env(safe-area-inset-top,0px))}}
 #term-open.show{opacity:1;transform:none}
 #term-open:hover{color:var(--text)}
 #term-open svg{width:18px;height:18px;display:block;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
