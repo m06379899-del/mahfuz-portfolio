@@ -321,3 +321,22 @@ h2{font-size:clamp(38px,6vw,84px);margin-bottom:36px;max-width:14ch}
 .card-body .card-btn:hover,.card-body .card-btn:focus-visible{background:var(--accent);border-color:var(--accent);transform:translateY(-1px);box-shadow:0 0 0 4px rgba(var(--accent-rgb)/.2),0 10px 28px -10px rgba(var(--accent-rgb)/.9)}
 .card-btn:hover .arrow,.card-btn:focus-visible .arrow{transform:translate(2px,-2px)}
 .card-btn:active{transform:translateY(0)}
+
+/* feedback form (inside the cream contact card) */
+#feedback{margin-top:28px;max-width:640px}
+#feedback .fb-title{font-weight:600;font-size:15px;margin-bottom:12px}
+#feedback .fb-honey{position:absolute;left:-9999px;opacity:0;height:0;overflow:hidden}
+#feedback .fb-grid{display:grid;gap:10px}
+#feedback input[type=text],#feedback textarea{
+  width:100%;padding:12px 16px;border:1px solid rgba(18,17,16,.15);border-radius:14px;
+  background:#fff;color:#121110;font:400 14px/1.5 var(--sans);resize:vertical;
+  transition:border-color .2s,box-shadow .2s}
+#feedback input::placeholder,#feedback textarea::placeholder{color:#8a857c}
+#feedback input:focus,#feedback textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(var(--accent-rgb)/.18)}
+#feedback button{justify-self:start;padding:10px 26px;border-radius:999px;background:#121110;color:var(--cream);
+  font-size:14px;font-weight:500;transition:transform .2s,opacity .2s}
+#feedback button:hover{transform:translateY(-2px)}
+#feedback button:disabled{opacity:.55;transform:none;cursor:wait}
+#feedback .fb-msg{font-size:13.5px;margin-top:10px}
+#feedback .fb-msg.ok{color:#15803d}
+#feedback .fb-msg.err{color:#b91c1c}

@@ -212,6 +212,17 @@
           <div class="row"><span>Email</span><a id="email-link" href="#"></a><button id="copy" type="button">Copy</button></div>
           <div class="row"><span>WhatsApp</span><a id="wa-link" href="#" target="_blank" rel="noopener noreferrer"></a></div>
         </div>
+        <form id="feedback" name="feedback" method="POST" data-netlify="true" netlify-honeypot="company">
+          <input type="hidden" name="form-name" value="feedback">
+          <p class="fb-honey"><label>Leave this empty: <input name="company" tabindex="-1" autocomplete="off"></label></p>
+          <p class="fb-title">Have an idea or feedback?</p>
+          <div class="fb-grid">
+            <input type="text" name="name" placeholder="Your name (optional)" maxlength="60" autocomplete="name">
+            <textarea name="message" required placeholder="Your idea or feedback…" maxlength="1200" rows="3"></textarea>
+            <button type="submit" id="fb-send">Send</button>
+          </div>
+          <p class="fb-msg" role="status" hidden></p>
+        </form>
         <ul class="socials" id="socials"></ul>
       </div>
     </div>

@@ -807,3 +807,24 @@ const start = () => ui.build();
 if (window.MALoader) { MALoader.done.then(start); setTimeout(start, 9000); } else start();
 return { play, setOn, measure, names: Object.keys(LIB), get enabled() { return cfg.on; }, get volume() { return cfg.vol; }, get supported() { return supported(); }, get voices() { return active; }, get gain() { return master ? +master.gain.value.toFixed(3) : null; }, get state() { return ctx ? ctx.state : 'none'; } };
 })();
+
+/* ---------- feedback form (Netlify Forms): AJAX submit, inline success/error ---------- */
+(function () {
+  const form = document.getElementById('feedback');
+  if (!form) return;
+  const msg = form.querySelector('.fb-msg'), btn = form.querySelector('#fb-send');
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    if (btn.disabled) return;
+    btn.disabled = true; msg.hidden = true;
+    try {
+      const body = new URLSearchParams(new FormData(form)).toString();
+      const res = await fetch('/', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body });
+      if (!res.ok) throw 0;
+      form.querySelectorAll('input,textarea').forEach(f => { if (f.type !== 'hidden') f.value = ''; });
+      msg.textContent = 'Thank you! Your feedback has been received.'; msg.className = 'fb-msg ok'; msg.hidden = false;
+    } catch {
+      msg.textContent = 'Sorry, it did not send. Please try again or use the email above.'; msg.className = 'fb-msg err'; msg.hidden = false;
+    } finally { btn.disabled = false; }
+  });
+})();
