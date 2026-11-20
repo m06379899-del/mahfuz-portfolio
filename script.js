@@ -128,7 +128,9 @@ $('#next').onclick = () => rail.scrollBy({ left: stepW(), behavior: 'smooth' });
 /* contact */
 const mail = 'mailto:' + C.email;
 $('#email-link').href = mail; $('#email-link').textContent = C.email;
-$('#wa-link').href = 'https://wa.me/' + C.whatsapp.replace(/\D/g, ''); $('#wa-link').textContent = C.whatsapp;
+const waDigits = (C.whatsapp || '').replace(/\D/g, '');
+if (waDigits) { $('#wa-link').href = 'https://wa.me/' + waDigits; $('#wa-link').textContent = C.whatsapp; }
+else $('#wa-link').closest('.row').style.display = 'none';   /* no number set: hide the row instead of linking to an empty wa.me */
 $('#copy').onclick = async function () {
   try { await navigator.clipboard.writeText(C.email); }
   catch (e) { const t = h('textarea'); t.value = C.email; document.body.append(t); t.select(); safe(() => document.execCommand('copy')); t.remove(); }
@@ -148,18 +150,19 @@ C.socials.forEach(s => {
 });
 
 /* ---------- scroll: progress line, nav hide, process timeline ---------- */
-const nav = $('#nav'), tl = $('#timeline'); let lastY = scrollY, tick = false;
+const nav = $('#nav'), tl = $('#timeline'), progressEl = $('#progress'), processEl = $('#process'), stepLis = $$('#steps li');
+let lastY = scrollY, tick = false;
 function onScroll() {
   if (tick) return; tick = true;
   requestAnimationFrame(() => {
     tick = false;
     const y = scrollY, max = document.documentElement.scrollHeight - innerHeight;
-    $('#progress').style.setProperty('--p', max > 0 ? y / max : 0);
+    progressEl.style.setProperty('--p', max > 0 ? y / max : 0);
     nav.classList.toggle('hide', y > lastY && y > 120); lastY = y;
-    const r = $('#process').getBoundingClientRect(), p = clamp((innerHeight * .85 - r.top) / (r.height * .9), 0, 1);
+    const r = processEl.getBoundingClientRect(), p = clamp((innerHeight * .85 - r.top) / (r.height * .9), 0, 1);
     tl.style.setProperty('--tilt', (reduce ? 0 : 18 * (1 - clamp(p * 2.2, 0, 1))) + 'deg');
     tl.style.setProperty('--ph', p);
-    $$('#steps li').forEach((li, i) => li.classList.toggle('on', p > i / 4 + .02));
+    stepLis.forEach((li, i) => li.classList.toggle('on', p > i / 4 + .02));
   });
 }
 addEventListener('scroll', onScroll, { passive: true }); onScroll();
@@ -693,10 +696,10 @@ function play(name) {
     const now = performance.now();
     if (now - (last[name] || 0) < d.cd || (d.cat !== 'fb' && now - lastAny < ANY_GAP) || active >= MAX_VOICES) return;   /* cooldowns + voice limit */
     const c = ensure(); if (!c) return;
-    if (c.state !== 'running') { c.resume && c.resume().catch(() => {}); return; }
     last[name] = lastAny = now; active++; setTimeout(() => { active--; }, d.len * 1000 + 120);
-    const t = c.currentTime + .005;
-    if (!playFile(name, t)) d.fn(c, t, master);
+    const fire = () => { const t = c.currentTime + .005; if (!playFile(name, t)) d.fn(c, t, master); };
+    if (c.state !== 'running') { c.resume ? c.resume().then(fire, () => {}) : fire(); }   /* suspended: the sound plays as soon as the context wakes */
+    else fire();
   } catch (e) {}
 }
 function setOn(on) {
@@ -794,7 +797,8 @@ if (cardEl) {                                                     /* ID card: so
 
 /* ---------- test hook: render a sound offline and measure it (nothing is played) ---------- */
 async function measure(name) {
-  const d = LIB[name], oc = new OfflineAudioContext(1, 44100, 44100), g = oc.createGain(); g.gain.value = gainFor(100); g.connect(oc.destination);
+  const d = LIB[name]; if (!d) return null;                 /* unknown sound name: nothing to render */
+  const oc = new OfflineAudioContext(1, 44100, 44100), g = oc.createGain(); g.gain.value = gainFor(100); g.connect(oc.destination);
   d.fn(oc, .005, g); const x = (await oc.startRendering()).getChannelData(0); let pk = 0, sq = 0, end = 0, bad = false;
   for (let i = 0; i < x.length; i++) { const a = Math.abs(x[i]); if (a !== a) bad = true; if (a > pk) pk = a; sq += a * a; if (a > .002) end = i; }
   return { peak: +pk.toFixed(3), rms: +Math.sqrt(sq / x.length).toFixed(4), seconds: +(end / 44100).toFixed(2), nan: bad };

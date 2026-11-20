@@ -94,8 +94,7 @@ def('projects', 'Display my portfolio projects', () => {
   return rows.length ? [ln(hi('Projects')), BLANK, ...rows] : [ln('No projects yet.')];
 });
 def('github', 'Open my GitHub profile', () => {
-  let opened = false;
-  try { const href = safeUrl(GITHUB); if (href) { const w = window.open(href, '_blank', 'noopener,noreferrer'); opened = !!w || w === null; } } catch (e) {}
+  try { const href = safeUrl(GITHUB); if (href) window.open(href, '_blank', 'noopener,noreferrer'); } catch (e) {}
   return [ln(ok('→ '), 'Opening GitHub in a new tab...'), ln('  ', link(GITHUB.replace(/^https:\/\//, ''), GITHUB)), ln(dim('(If nothing opened, your browser blocked the pop-up: use the link above.)'))];
 });
 def('contact', 'Display contact information', () => {
@@ -201,6 +200,7 @@ function unknown(name) {
   return rows;
 }
 function run(raw) {
+  if (!built) return;                                       /* window not built yet: nothing to print into */
   raw = String(raw == null ? '' : raw).slice(0, CFG.maxInput);
   pending++; term.setAttribute('aria-busy', 'true');
   chain = chain.then(() => exec(raw)).catch(() => {}).then(() => { if (--pending <= 0) { pending = 0; term.removeAttribute('aria-busy'); } });
