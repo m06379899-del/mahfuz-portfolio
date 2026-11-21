@@ -10,15 +10,15 @@ const CONTENT = {
   tools: ["VS Code", "Python", "HTML", "CSS", "JavaScript", "GitHub", "Termux"],
   projectsNote: "Projects I am building right now. Repository and demo links will be added when they are ready.",
   projects: [
+    { title: "Student Learning Platform", status: "In Development", art: "dash",
+      desc: "An AI-powered educational platform for students featuring textbook PDF question answering, MCQs, notices, bookmarks, and progress tracking.",
+      tech: ["AI", "PDF Q&A", "MCQs", "Notices", "Bookmarks", "Progress tracking"], link: "https://sohojshekha.netlify.app/", linkText: "Live Demo ↗" },
     { title: "QuizRun", status: "In Development", art: "runner",
       desc: "An AI-powered educational endless runner game where students learn through MCQ questions generated from uploaded PDFs.",
       tech: ["AI", "PDF upload", "MCQ", "Game"], link: "", linkText: "" },
     { title: "JARVIS", status: "In Development", art: "voice",
       desc: "A Python-based AI voice assistant with Gemini API integration, voice input, voice output, and SQLite memory.",
-      tech: ["Python", "Gemini API", "SQLite", "Voice input", "Voice output"], link: "", linkText: "" },
-    { title: "Student Learning Platform", status: "In Development", art: "dash",
-      desc: "An AI-powered educational platform for students featuring textbook PDF question answering, MCQs, notices, bookmarks, and progress tracking.",
-      tech: ["AI", "PDF Q&A", "MCQs", "Notices", "Bookmarks", "Progress tracking"], link: "https://sohojshekha.netlify.app/", linkText: "Live Demo ↗" }
+      tech: ["Python", "Gemini API", "SQLite", "Voice input", "Voice output"], link: "", linkText: "" }
   ],
   steps: [
     { t: "Idea", d: "Spot a problem worth solving." },
