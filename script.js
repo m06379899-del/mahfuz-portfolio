@@ -101,6 +101,42 @@ C.tools.forEach(t => $('#tools').append(h('li', '', t)));
 for (let i = 0; i < 4; i++) C.skills.forEach(s => $('#strip').append(h('span', '', s)));
 C.strengths.forEach(s => $('#strengths').append(h('li', '', s)));
 C.steps.forEach(s => { const li = h('li'); li.append(h('b', '', s.t), h('p', '', s.d)); $('#steps').append(li); });
+
+/* ---------- journey timeline (facts only — mirrors the portfolio knowledge base) ---------- */
+{
+  const JOURNEY = [
+    { tag: "2018", title: "The Beginning", status: "Exploring",
+      desc: "Interest in coding, computers and technology began around 2018, at about 6–7 years old — inspired by watching a developer and an SEO expert at work." },
+    { tag: "First steps", title: "Hello, HTML", status: "Exploring",
+      desc: "Early experiments with a simple Hello World–style webpage, learning HTML and CSS through YouTube tutorials and guidance." },
+    { tag: "Growing up", title: "Staying Curious", status: "Exploring",
+      desc: "Time spent coding changed over the years, but the curiosity never left — HTML, CSS and JavaScript, a little more every day." },
+    { tag: "AI era", title: "Working with AI", status: "Exploring",
+      desc: "AI tools became part of the learning process — using AI as a practical assistant for learning, building and solving problems." },
+    { tag: "JARVIS", title: "Personal AI Assistant", status: "Experimental",
+      desc: "A Python-based personal AI assistant. Plans included the Gemini API, voice input/output and SQLite memory — still experimental, still growing." },
+    { tag: "Now", title: "Exploring Artificial Intelligence", status: "Focus",
+      desc: "AI is the strongest area of interest right now — exploring how it can help with programming, projects, learning and problem-solving." },
+    { tag: "Future", title: "Aspiring Software Engineer", status: "Goal",
+      desc: "The long-term ambition: become a software engineer and create useful, meaningful digital products." }
+  ];
+  const jlist = $('#journey-list');
+  if (jlist) {
+    JOURNEY.forEach(j => {
+      const li = h('li', 'j-item');
+      li.innerHTML =
+        `<span class="j-tag">${j.tag}</span>` +
+        `<div class="j-card"><div class="j-head"><h3>${j.title}</h3>` +
+        `<span class="j-status s-${j.status.toLowerCase()}">${j.status}</span></div>` +
+        `<p>${j.desc}</p></div>`;
+      jlist.append(li);
+    });
+    const jObs = new IntersectionObserver(es => es.forEach(en => {
+      if (en.isIntersecting) { en.target.classList.add('in'); jObs.unobserve(en.target); }
+    }), { threshold: 0.2 });
+    $$('.j-item').forEach((li, i) => { li.style.transitionDelay = (i % 2) * 80 + 'ms'; jObs.observe(li); });
+  }
+}
 const ART = {
   runner: '<svg viewBox="0 0 320 180" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><line class="m" x1="0" y1="142" x2="320" y2="142"/><circle class="af" cx="77" cy="92" r="9"/><rect class="af" x="64" y="104" width="26" height="38" rx="7"/><path class="m" d="M100 118q16-40 34 0" stroke-dasharray="3 5"/><rect class="mf" x="196" y="118" width="22" height="24" rx="4"/><rect class="mf" x="252" y="124" width="18" height="18" rx="4"/><g class="o"><rect x="168" y="26" width="62" height="26" rx="8"/><rect x="238" y="26" width="62" height="26" rx="8"/><rect x="168" y="60" width="62" height="26" rx="8"/><rect x="238" y="60" width="62" height="26" rx="8"/></g><text x="192" y="43">A</text><text x="262" y="43">B</text><text x="192" y="77">C</text><text x="262" y="77">D</text></svg>',
   voice: '<svg viewBox="0 0 320 180" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><g class="af"><rect x="54" y="80" width="10" height="20" rx="5"/><rect x="72" y="66" width="10" height="48" rx="5"/><rect x="90" y="50" width="10" height="80" rx="5"/><rect x="108" y="70" width="10" height="40" rx="5"/><rect x="126" y="36" width="10" height="108" rx="5"/><rect x="144" y="60" width="10" height="60" rx="5"/><rect x="162" y="76" width="10" height="28" rx="5"/><rect x="180" y="52" width="10" height="76" rx="5"/><rect x="198" y="68" width="10" height="44" rx="5"/><rect x="216" y="82" width="10" height="16" rx="5"/><rect x="234" y="62" width="10" height="56" rx="5"/><rect x="252" y="78" width="10" height="24" rx="5"/></g><text x="54" y="162">$ jarvis --listen</text></svg>',
